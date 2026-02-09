@@ -1,6 +1,12 @@
 add_library(
         lexer_lib
+        utils/Utils.cpp
         reader/Reader.cpp
+        rules/Whitespace.cpp
+        rules/Identifier.cpp
+        rules/Number.cpp
+        rules/String.cpp
+        rules/Operator.cpp
         Lexer.cpp
 )
 

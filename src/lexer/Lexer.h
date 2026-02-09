@@ -20,4 +20,6 @@ private:
 
 private:
 	Reader m_reader;
+	class KeywordMap;
+	KeywordMap* m_keywords;
 };

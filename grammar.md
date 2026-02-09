@@ -105,7 +105,6 @@ primary_expr     = "(", expression, ")"
                  | ident_expr
                  | arrow_func
                  | array_lit
-                 | range_lit
                  | comptime_block ;
 
 ident_expr       = identifier, [ type_args ], [ member_chain ], [ call_chain ], [ index_chain ] ;
@@ -117,8 +116,6 @@ arrow_func       = "(", [ param_list ], ")", [ effect_spec ], "->", ( expression
 
 array_lit        = "[", [ array_items ], "]" ;
 array_items      = expression, { ",", expression } ;
-
-range_lit        = "[", expression, "..", expression, "]" ;
 
 comptime_block   = "comptime", block_stmt ;
 

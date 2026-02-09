@@ -1,4 +1,5 @@
 #include "Reader.h"
+#include <stdexcept>
 
 Reader::Reader(const std::string& str)
 	: m_input(str)
@@ -17,8 +18,10 @@ char Reader::Get()
 		throw std::runtime_error("EOF Error: tried to get char from an empty reader");
 	}
 	const auto ch = static_cast<char>(m_input.get());
+
 	if (ch == '\n')
 	{
+		m_prevCount = m_count;
 		++m_lineCount;
 		m_count = 0;
 	}
@@ -26,8 +29,8 @@ char Reader::Get()
 	{
 		++m_count;
 	}
-	m_record += ch;
 
+	m_record += ch;
 	return ch;
 }
 
@@ -38,7 +41,31 @@ char Reader::Peek()
 
 void Reader::Unget()
 {
-	--m_count;
+	if (m_record.empty())
+	{
+		throw std::runtime_error("Cannot unget: no characters consumed");
+	}
+
+	const char lastChar = m_record.back();
+
+	if (lastChar == '\n')
+	{
+		if (m_lineCount == 0)
+		{
+			throw std::runtime_error("Cannot unget newline: no newlines to undo");
+		}
+		--m_lineCount;
+		m_count = m_prevCount;
+	}
+	else
+	{
+		if (m_count == 0)
+		{
+			throw std::runtime_error("Cannot unget: count underflow");
+		}
+		--m_count;
+	}
+
 	m_record.pop_back();
 	m_input.unget();
 }
@@ -55,30 +82,43 @@ size_t Reader::LineCount() const
 
 bool Reader::Empty()
 {
-	return m_input.peek() == '\n' || m_input.eof();
+	return EndOfFile();
 }
 
 bool Reader::EndOfFile()
 {
-	m_input.peek();
-	return m_input.eof();
+	return m_input.peek() == std::char_traits<char>::eof();
 }
 
-void Reader::Seek(const size_t pos)
+void Reader::Seek(size_t pos)
 {
-	const size_t dropLen = m_count - pos;
-	if (dropLen <= m_record.size())
-	{
-		m_record.resize(m_record.size() - dropLen);
-	}
-	else
-	{
-		m_record.clear();
-	}
-	const auto offset = pos - m_count;
-	m_count = pos;
 	m_input.clear();
-	m_input.seekg(static_cast<long>(offset), std::ios_base::cur);
+	m_input.seekg(0, std::ios_base::beg);
+
+	m_count = 0;
+	m_lineCount = 0;
+	m_prevCount = 0;
+	m_record.clear();
+
+	for (size_t i = 0; i < pos; ++i)
+	{
+		if (m_input.peek() == std::char_traits<char>::eof())
+		{
+			throw std::runtime_error("Seek beyond EOF");
+		}
+
+		const char ch = static_cast<char>(m_input.get());
+		if (ch == '\n')
+		{
+			m_prevCount = m_count;
+			++m_lineCount;
+			m_count = 0;
+		}
+		else
+		{
+			++m_count;
+		}
+	}
 }
 
 void Reader::Record()

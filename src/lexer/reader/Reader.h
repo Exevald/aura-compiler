@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <string>
 
 class Reader
 {
@@ -21,11 +22,12 @@ public:
 
 	void Seek(size_t pos);
 	void Record();
-	std::string StopRecord();
+	[[nodiscard]] std::string StopRecord();
 
 private:
 	std::stringstream m_input;
 	size_t m_count = 0;
 	size_t m_lineCount = 0;
+	size_t m_prevCount = 0;
 	std::string m_record;
 };
