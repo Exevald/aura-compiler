@@ -2,52 +2,49 @@
 
 Token operatorRule::ParseOperator(Reader& reader, size_t pos, size_t line)
 {
-	char ch = reader.Peek();
+	char ch = reader.Get();
 
-	if (ch == '=' && !reader.EndOfFile() && reader.Peek() != EOF && reader.Peek() == '=')
+	if (!reader.EndOfFile())
 	{
-		reader.Get();
-		reader.Get();
-		return { TokenType::OP_EQUAL, "==", pos, line, Error::NONE };
-	}
-	if (ch == '!' && !reader.EndOfFile() && reader.Peek() != EOF && reader.Peek() == '=')
-	{
-		reader.Get();
-		reader.Get();
-		return { TokenType::OP_NOT_EQUAL, "!=", pos, line, Error::NONE };
-	}
-	if (ch == '<' && !reader.EndOfFile() && reader.Peek() != EOF && reader.Peek() == '=')
-	{
-		reader.Get();
-		reader.Get();
-		return { TokenType::OP_LESS_OR_EQUAL, "<=", pos, line, Error::NONE };
-	}
-	if (ch == '>' && !reader.EndOfFile() && reader.Peek() != EOF && reader.Peek() == '=')
-	{
-		reader.Get();
-		reader.Get();
-		return { TokenType::OP_GREATER_OR_EQUAL, ">=", pos, line, Error::NONE };
-	}
-	if (ch == '-' && !reader.EndOfFile() && reader.Peek() != EOF && reader.Peek() == '>')
-	{
-		reader.Get();
-		reader.Get();
-		return { TokenType::ARROW, "->", pos, line, Error::NONE };
-	}
-	if (ch == '&' && !reader.EndOfFile() && reader.Peek() != EOF && reader.Peek() == '&')
-	{
-		reader.Get();
-		reader.Get();
-		return { TokenType::OP_DOUBLE_AMPERSAND, "&&", pos, line, Error::NONE };
-	}
-	if (ch == '|' && !reader.EndOfFile() && reader.Peek() != EOF && reader.Peek() == '|')
-	{
-		reader.Get();
-		reader.Get();
-		return { TokenType::OP_DOUBLE_PIPE, "||", pos, line, Error::NONE };
+		char next = reader.Peek();
+
+		if (ch == '=' && next == '=')
+		{
+			reader.Get();
+			return { TokenType::OP_EQUAL, "==", pos, line, Error::NONE };
+		}
+		if (ch == '!' && next == '=')
+		{
+			reader.Get();
+			return { TokenType::OP_NOT_EQUAL, "!=", pos, line, Error::NONE };
+		}
+		if (ch == '<' && next == '=')
+		{
+			reader.Get();
+			return { TokenType::OP_LESS_OR_EQUAL, "<=", pos, line, Error::NONE };
+		}
+		if (ch == '>' && next == '=')
+		{
+			reader.Get();
+			return { TokenType::OP_GREATER_OR_EQUAL, ">=", pos, line, Error::NONE };
+		}
+		if (ch == '-' && next == '>')
+		{
+			reader.Get();
+			return { TokenType::ARROW, "->", pos, line, Error::NONE };
+		}
+		if (ch == '&' && next == '&')
+		{
+			reader.Get();
+			return { TokenType::OP_DOUBLE_AMPERSAND, "&&", pos, line, Error::NONE };
+		}
+		if (ch == '|' && next == '|')
+		{
+			reader.Get();
+			return { TokenType::OP_DOUBLE_PIPE, "||", pos, line, Error::NONE };
+		}
 	}
 
-	reader.Get();
 	switch (ch)
 	{
 	case '(':
@@ -87,9 +84,8 @@ Token operatorRule::ParseOperator(Reader& reader, size_t pos, size_t line)
 	case '>':
 		return { TokenType::OP_GREATER, ">", pos, line, Error::NONE };
 	case '!':
-		return { TokenType::OP_NOT_EQUAL, "!", pos, line, Error::NONE };
+		return { TokenType::ERROR, "!", pos, line, Error::UNEXPECTED_CHARACTER };
 	default:
-		reader.Unget();
 		return { TokenType::ERROR, std::string(1, ch), pos, line, Error::UNEXPECTED_CHARACTER };
 	}
 }

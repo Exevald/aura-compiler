@@ -1,12 +1,15 @@
 #pragma once
 
-#include "./Token.h"
+#include "KeywordMap.h"
+#include "Token.h"
 #include "reader/Reader.h"
 
 class Lexer
 {
 public:
 	explicit Lexer(std::string const& input);
+	~Lexer();
+
 	Token Get();
 	Token Peek();
 	[[nodiscard]] bool Empty();
@@ -20,6 +23,5 @@ private:
 
 private:
 	Reader m_reader;
-	class KeywordMap;
 	KeywordMap* m_keywords;
 };

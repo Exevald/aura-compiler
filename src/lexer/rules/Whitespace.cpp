@@ -5,28 +5,44 @@ void whitespaceRule::SkipWhitespacesAndComments(Reader& reader)
 	while (!reader.EndOfFile())
 	{
 		char ch = reader.Peek();
-		if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n')
+
+		if (ch == ' ' || ch == '\t' || ch == '\r')
 		{
 			reader.Get();
 			continue;
 		}
 
-		if (ch == '/' && !reader.EndOfFile())
+		if (ch == '\n')
 		{
 			reader.Get();
+			continue;
+		}
+
+		if (ch == '/')
+		{
+			reader.Get();
+
 			if (reader.EndOfFile())
 			{
+				reader.Unget();
 				break;
 			}
-			if (reader.Peek() == '/')
+
+			char next = reader.Peek();
+			if (next == '/')
 			{
 				reader.Get();
-				while (!reader.EndOfFile() && reader.Get() != '\n')
+				while (!reader.EndOfFile())
 				{
+					char c = reader.Get();
+					if (c == '\n')
+					{
+						break;
+					}
 				}
 				continue;
 			}
-			else if (reader.Peek() == '*')
+			else if (next == '*')
 			{
 				reader.Get();
 				while (!reader.EndOfFile())
@@ -43,6 +59,7 @@ void whitespaceRule::SkipWhitespacesAndComments(Reader& reader)
 			else
 			{
 				reader.Unget();
+				break;
 			}
 		}
 

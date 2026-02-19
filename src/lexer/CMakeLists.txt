@@ -7,6 +7,7 @@ add_library(
         rules/Number.cpp
         rules/String.cpp
         rules/Operator.cpp
+        KeywoardMap.cpp
         Lexer.cpp
 )
 

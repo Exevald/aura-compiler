@@ -5,14 +5,15 @@
 #include "rules/String.h"
 #include "rules/Whitespace.h"
 
-class Lexer::KeywordMap : public ::KeywordMap
-{
-};
-
 Lexer::Lexer(std::string const& input)
 	: m_reader(input)
 	, m_keywords(new KeywordMap())
 {
+}
+
+Lexer::~Lexer()
+{
+	delete m_keywords;
 }
 
 Token Lexer::Get()
@@ -23,7 +24,7 @@ Token Lexer::Get()
 	{
 		return {
 			TokenType::EOF_TOKEN,
-			/*value=*/"",
+			"",
 			m_reader.Count(),
 			m_reader.LineCount(),
 			Error::NONE
@@ -41,7 +42,9 @@ Token Lexer::Get()
 	}
 
 	if (ch == '"')
+	{
 		return String();
+	}
 
 	return SpecialChar();
 }
@@ -51,10 +54,11 @@ Token Lexer::Peek()
 	if (Empty())
 	{
 		return Token{
-			.type = TokenType::ERROR,
-			.pos = m_reader.Count(),
-			.line = m_reader.LineCount(),
-			.error = Error::EMPTY_INPUT
+			TokenType::ERROR,
+			"",
+			m_reader.Count(),
+			m_reader.LineCount(),
+			Error::EMPTY_INPUT
 		};
 	}
 	size_t pos = m_reader.Count();

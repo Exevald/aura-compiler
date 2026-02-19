@@ -10,12 +10,17 @@ Token stringRule::ParseString(Reader& reader, size_t pos, size_t line)
 		char ch = reader.Get();
 		value += ch;
 
+		if (ch == '\\')
+		{
+			if (!reader.EndOfFile())
+			{
+				value += reader.Get();
+			}
+			continue;
+		}
+
 		if (ch == '"')
 		{
-			if (value.size() >= 2 && value[value.size() - 2] == '\\')
-			{
-				continue;
-			}
 			return { TokenType::STRING_LITERAL, value, pos, line, Error::NONE };
 		}
 
@@ -23,13 +28,7 @@ Token stringRule::ParseString(Reader& reader, size_t pos, size_t line)
 		{
 			return { TokenType::ERROR, value, pos, line, Error::UNCLOSED_STRING };
 		}
-		if (ch == '\\' && !reader.EndOfFile())
-		{
-			value += reader.Get();
-		}
-
-		return { TokenType::ERROR, value, pos, line, Error::UNCLOSED_STRING };
 	}
 
-	return {};
+	return { TokenType::ERROR, value, pos, line, Error::UNCLOSED_STRING };
 }

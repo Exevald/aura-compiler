@@ -1,4 +1,5 @@
 #include "reader/Reader.h"
+
 #include <gtest/gtest.h>
 
 TEST(Reader, GetPeekUnget)
