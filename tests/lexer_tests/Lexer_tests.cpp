@@ -56,6 +56,19 @@ TEST_F(LexerTest, QualifiedIdentifier)
 	EXPECT_EQ(token.value, "std::vector");
 }
 
+TEST_F(LexerTest, QualifiedIdAsSeparateTokens)
+{
+	std::vector<Token> tokens = GetAllTokens("std.io");
+
+	EXPECT_EQ(tokens[0].type, TokenType::ID);
+	EXPECT_EQ(tokens[0].value, "std");
+
+	EXPECT_EQ(tokens[1].type, TokenType::DOT);
+
+	EXPECT_EQ(tokens[2].type, TokenType::ID);
+	EXPECT_EQ(tokens[2].value, "io");
+}
+
 TEST_F(LexerTest, Keyword_module)
 {
 	Token token = GetToken("module");
