@@ -1,1 +1,2 @@
 add_subdirectory(lexer_tests)
+add_subdirectory(parser_tests)
