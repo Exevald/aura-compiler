@@ -49,7 +49,7 @@ void RegisterBuiltInOperations()
 	}));
 
 	reg.Register(OpCode::OP_DIVIDE, std::make_unique<BinaryArithmeticHandler>(OpCode::OP_DIVIDE, "DIV", [](const Value& l, const Value& r) {
-		double rv = ValueHelper::As<double>(r);
+		auto rv = ValueHelper::As<double>(r);
 		if (rv == 0.0)
 		{
 			throw std::runtime_error("Division by zero");

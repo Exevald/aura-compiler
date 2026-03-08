@@ -82,8 +82,8 @@ Value ValueHelper::PerformBinaryArithmetic(const Value& lhs, const Value& rhs, O
 
 		if constexpr (PrimitiveValue<L> && PrimitiveValue<R>)
 		{
-			double lv = static_cast<double>(l);
-			double rv = static_cast<double>(r);
+			auto lv = static_cast<double>(l);
+			auto rv = static_cast<double>(r);
 			return operation(lv, rv);
 		}
 		else
@@ -168,7 +168,7 @@ T ValueHelper::As(const Value& val)
 			}
 			else
 			{
-				throw std::runtime_error("Cannot convert to arithmetic type");
+				throw std::bad_variant_access();
 			}
 		},
 			val);

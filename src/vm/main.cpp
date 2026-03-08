@@ -1,7 +1,6 @@
 #include "core/Value.h"
 #include "execution/VirtualMachine.h"
 
-#include <format>
 #include <iostream>
 
 using namespace VM::Core;
@@ -90,7 +89,7 @@ private:
 		}
 		catch (const std::exception& e)
 		{
-			std::cout << std::format("Caught expected error: {}\n", e.what());
+			std::cout << "Caught expected error: " << e.what() << "\n";
 			caught = true;
 		}
 
@@ -98,8 +97,7 @@ private:
 		{
 			if (vm.GetContext().HasError())
 			{
-				std::cout << std::format("Caught expected error: {}\n",
-					vm.GetContext().GetError());
+				std::cout << "Caught expected error: " << vm.GetContext().GetError() << "\n";
 			}
 			else
 			{
@@ -119,7 +117,7 @@ int main()
 	}
 	catch (const std::exception& e)
 	{
-		std::cerr << std::format("Fatal Error: {}\n", e.what());
+		std::cerr << e.what() << "\n";
 		return 1;
 	}
 }

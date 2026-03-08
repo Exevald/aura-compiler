@@ -1,50 +1,63 @@
 #pragma once
 
-#include "../core/Value.h"
 #include "../core/OpCode.h"
+#include "../core/Value.h"
 #include "../execution/ExecutionContext.h"
 
 #include <functional>
-#include <unordered_map>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
-namespace VM::Operations {
+namespace VM::Operations
+{
 
-class IOperationHandler {
+class IOperationHandler
+{
 public:
 	virtual ~IOperationHandler() = default;
 	virtual int Execute(Core::OpCode opcode, Execution::ExecutionContext& ctx) = 0;
-	virtual std::string_view GetName() const = 0;
+	[[nodiscard]] virtual std::string_view GetName() const = 0;
 };
 
-class BinaryArithmeticHandler : public IOperationHandler {
+class BinaryArithmeticHandler : public IOperationHandler
+{
 public:
 	using BinaryFunc = std::function<Core::Value(const Core::Value&, const Core::Value&)>;
 
 	BinaryArithmeticHandler(Core::OpCode op, std::string_view name, BinaryFunc func)
-		: m_opcode(op), m_name(name), m_func(std::move(func)) {}
+		: m_opcode(op)
+		, m_name(name)
+		, m_func(std::move(func))
+	{
+	}
 
-	int Execute(Core::OpCode opcode, Execution::ExecutionContext& ctx) override {
-		if (opcode != m_opcode) return -1;
+	int Execute(Core::OpCode opcode, Execution::ExecutionContext& ctx) override
+	{
+		if (opcode != m_opcode)
+			return -1;
 
-		try {
-			if (ctx.StackSize() < 2) {
+		try
+		{
+			if (ctx.StackSize() < 2)
+			{
 				ctx.RaiseError("Stack underflow");
 				return -1;
 			}
 			Core::Value rhs = ctx.PopValue();
 			Core::Value lhs = ctx.PopValue();
 			Core::Value result = m_func(lhs, rhs);
-			ctx.PushValue(std::move(result));
+			ctx.PushValue(result);
 			return 0;
-		} catch (const std::exception& e) {
+		}
+		catch (const std::exception& e)
+		{
 			ctx.RaiseError(e.what());
 			return -1;
 		}
 	}
 
-	std::string_view GetName() const override { return m_name; }
+	[[nodiscard]] std::string_view GetName() const override { return m_name; }
 
 protected:
 	Core::OpCode m_opcode;
@@ -52,32 +65,43 @@ protected:
 	BinaryFunc m_func;
 };
 
-class UnaryHandler : public IOperationHandler {
+class UnaryHandler : public IOperationHandler
+{
 public:
 	using UnaryFunc = std::function<Core::Value(const Core::Value&)>;
 
 	UnaryHandler(Core::OpCode op, std::string_view name, UnaryFunc func)
-		: m_opcode(op), m_name(name), m_func(std::move(func)) {}
+		: m_opcode(op)
+		, m_name(name)
+		, m_func(std::move(func))
+	{
+	}
 
-	int Execute(Core::OpCode opcode, Execution::ExecutionContext& ctx) override {
-		if (opcode != m_opcode) return -1;
+	int Execute(Core::OpCode opcode, Execution::ExecutionContext& ctx) override
+	{
+		if (opcode != m_opcode)
+			return -1;
 
-		try {
-			if (ctx.StackSize() < 1) {
+		try
+		{
+			if (ctx.StackSize() < 1)
+			{
 				ctx.RaiseError("Stack underflow");
 				return -1;
 			}
 			Core::Value operand = ctx.PopValue();
 			Core::Value result = m_func(operand);
-			ctx.PushValue(std::move(result));
+			ctx.PushValue(result);
 			return 0;
-		} catch (const std::exception& e) {
+		}
+		catch (const std::exception& e)
+		{
 			ctx.RaiseError(e.what());
 			return -1;
 		}
 	}
 
-	std::string_view GetName() const override { return m_name; }
+	[[nodiscard]] std::string_view GetName() const override { return m_name; }
 
 protected:
 	Core::OpCode m_opcode;
@@ -85,15 +109,16 @@ protected:
 	UnaryFunc m_func;
 };
 
-class OperationRegistry {
+class OperationRegistry
+{
 public:
 	using HandlerPtr = std::unique_ptr<IOperationHandler>;
 
 	static OperationRegistry& Instance();
 
 	bool Register(Core::OpCode opcode, HandlerPtr handler);
-	IOperationHandler* Get(Core::OpCode opcode) const;
-	bool Has(Core::OpCode opcode) const;
+	[[nodiscard]] IOperationHandler* Get(Core::OpCode opcode) const;
+	[[nodiscard]] bool Has(Core::OpCode opcode) const;
 
 private:
 	OperationRegistry() = default;
@@ -101,11 +126,11 @@ private:
 };
 
 template <typename Handler, typename... Args>
-bool RegisterOperation(Core::OpCode opcode, Args&&... args) {
+bool RegisterOperation(Core::OpCode opcode, Args&&... args)
+{
 	return OperationRegistry::Instance().Register(
 		opcode,
-		std::make_unique<Handler>(opcode, std::forward<Args>(args)...)
-	);
+		std::make_unique<Handler>(opcode, std::forward<Args>(args)...));
 }
 
 void RegisterBuiltInOperations();

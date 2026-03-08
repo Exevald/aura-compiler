@@ -38,7 +38,7 @@ public:
 
 	void SetVariable(std::string name, Core::Value value);
 	Core::Value* GetVariable(const std::string& name);
-	bool HasVariable(const std::string& name) const;
+	[[nodiscard]] bool HasVariable(const std::string& name) const;
 };
 
 class ExecutionContext
@@ -64,7 +64,7 @@ public:
 	CallFrame* CurrentFrame() { return m_callStack.empty() ? nullptr : &m_callStack.top(); }
 
 	void* Allocate(size_t size);
-	void Deallocate(void* ptr);
+	void Release(void* ptr);
 
 	void RaiseError(const std::string& message);
 	[[nodiscard]] bool HasError() const { return !m_errorMessage.empty(); }

@@ -170,7 +170,7 @@ Rules RulesBuilder::BuildGuidedRules()
 	Rules result;
 	for (auto const& r : m_rules)
 	{
-		grammar::GuidedRule rule;
+		GuidedRule rule;
 		rule.lhs = r.lhs;
 		rule.rhs = r.rhs;
 

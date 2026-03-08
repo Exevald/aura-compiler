@@ -1,7 +1,5 @@
 #include "ExecutionContext.h"
 
-#include <algorithm>
-#include <format>
 #include <stdexcept>
 
 namespace VM::Execution
@@ -18,7 +16,7 @@ void ExecutionContext::PushValue(Core::Value value)
 	{
 		throw std::overflow_error("Value stack overflow");
 	}
-	m_valueStack.push_back(std::move(value));
+	m_valueStack.push_back(value);
 }
 
 Core::Value ExecutionContext::PopValue()
@@ -27,7 +25,7 @@ Core::Value ExecutionContext::PopValue()
 	{
 		throw std::underflow_error("Value stack underflow");
 	}
-	Core::Value val = std::move(m_valueStack.back());
+	Core::Value val = m_valueStack.back();
 	m_valueStack.pop_back();
 	return val;
 }
@@ -106,7 +104,7 @@ Scope* ExecutionContext::ExitScope()
 
 void Scope::SetVariable(std::string name, Core::Value value)
 {
-	variables[std::move(name)] = std::move(value);
+	variables[std::move(name)] = value;
 }
 
 Core::Value* Scope::GetVariable(const std::string& name)
@@ -159,7 +157,7 @@ void* ExecutionContext::Allocate(size_t size)
 	return ptr;
 }
 
-void ExecutionContext::Deallocate(void* ptr)
+void ExecutionContext::Release(void* ptr)
 {
 	(void)ptr;
 }

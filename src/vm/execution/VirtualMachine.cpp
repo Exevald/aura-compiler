@@ -1,39 +1,11 @@
 #include "VirtualMachine.h"
 
-#include <format>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 namespace VM::Execution
 {
-
-void Chunk::Write(Core::OpCode opcode)
-{
-	code.push_back(static_cast<uint8_t>(opcode));
-}
-
-void Chunk::WriteConstant(const Core::Value& value)
-{
-	Write(Core::OpCode::OP_CONSTANT);
-	code.push_back(AddConstant(value));
-}
-
-uint8_t Chunk::AddConstant(const Core::Value& value)
-{
-	constants.push_back(value);
-	if (constants.size() > std::numeric_limits<uint8_t>::max())
-	{
-		throw std::overflow_error("Too many constants in chunk");
-	}
-	return static_cast<uint8_t>(constants.size() - 1);
-}
-
-void Chunk::Clear()
-{
-	code.clear();
-	constants.clear();
-	debugName.clear();
-}
 
 VirtualMachine::VirtualMachine() = default;
 
@@ -57,7 +29,7 @@ bool VirtualMachine::Interpret(Chunk* chunk)
 	{
 		if (m_context.HasError())
 		{
-			std::cerr << std::format("VM Error: {}\n", m_context.GetError());
+			std::cerr << "VM Error: " << m_context.GetError() << "\n";
 		}
 		else
 		{
@@ -89,11 +61,6 @@ ExecutionResult VirtualMachine::Run()
 		}
 
 		Core::Instruction instr = DecodeInstruction();
-
-		if (m_debugMode)
-		{
-			DebugPrintInstruction(instr);
-		}
 
 		int result = Dispatch(instr);
 
@@ -166,8 +133,7 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		uint8_t index = instr.operand;
 		if (index >= m_currentChunk->GetConstants().size())
 		{
-			m_context.RaiseError(std::format("Constant index {} out of bounds (max: {})",
-				index, m_currentChunk->GetConstants().size()));
+			m_context.RaiseError("Constant index" + std::to_string(index) + "out of bounds \n");
 			return -1;
 		}
 
@@ -253,36 +219,10 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	}
 
 	default: {
-		m_context.RaiseError(std::format("Unknown opcode: 0x{:02X}",
-			static_cast<uint8_t>(instr.opcode)));
+		m_context.RaiseError("Unknown opcode: " + std::to_string(static_cast<uint8_t>(instr.opcode)));
 		return -1;
 	}
 	}
-}
-
-void VirtualMachine::DebugPrintInstruction(const Core::Instruction& instr) const
-{
-	std::cout << std::format("[{:04}] {:<15} ",
-		m_ip - 1,
-		Core::GetOpCodeName(instr.opcode));
-
-	if (instr.operand != 0)
-	{
-		std::cout << std::format("arg={}", instr.operand);
-	}
-	std::cout << "\n";
-}
-
-void VirtualMachine::DebugPrintStack() const
-{
-	std::cout << "Stack [" << m_context.StackSize() << "]: ";
-	for (size_t i = 0; i < m_context.StackSize(); ++i)
-	{
-		if (i > 0)
-			std::cout << ", ";
-		Core::ValueHelper::PrintValue(m_context.PeekValue(i), std::cout);
-	}
-	std::cout << "\n";
 }
 
 } // namespace VM::Execution

@@ -50,10 +50,7 @@ public:
 	bool Interpret(Chunk* chunk);
 
 	ExecutionContext& GetContext() { return m_context; }
-	const ExecutionContext& GetContext() const { return m_context; }
-
-	void SetDebugMode(bool enabled) { m_debugMode = enabled; }
-	void SetMaxSteps(size_t max) { m_maxSteps = max; }
+	[[nodiscard]] const ExecutionContext& GetContext() const { return m_context; }
 
 	using ExtensionHandler = std::function<int(Core::OpCode, ExecutionContext&)>;
 	void RegisterExtension(Core::OpCode opcode, ExtensionHandler handler);
@@ -63,13 +60,9 @@ private:
 	Core::Instruction DecodeInstruction();
 	int Dispatch(const Core::Instruction& instr);
 
-	void DebugPrintInstruction(const Core::Instruction& instr) const;
-	void DebugPrintStack() const;
-
 	ExecutionContext m_context;
 	Chunk* m_currentChunk{ nullptr };
 	size_t m_ip{ 0 };
-	bool m_debugMode{ false };
 	size_t m_maxSteps{ 1000000 };
 	size_t m_stepsExecuted{ 0 };
 	std::unordered_map<Core::OpCode, ExtensionHandler> m_extensions;
