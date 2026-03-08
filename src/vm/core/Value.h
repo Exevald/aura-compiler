@@ -1,7 +1,6 @@
 #pragma once
 
 #include <concepts>
-#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -76,9 +75,9 @@ namespace VM::Core
 template <typename Op>
 Value ValueHelper::PerformBinaryArithmetic(const Value& lhs, const Value& rhs, Op operation)
 {
-	return std::visit([&](auto&& l, auto&& r) -> Value {
-		using L = std::decay_t<decltype(l)>;
-		using R = std::decay_t<decltype(r)>;
+	return std::visit([&]<typename T0, typename T1>(T0&& l, T1&& r) -> Value {
+		using L = std::decay_t<T0>;
+		using R = std::decay_t<T1>;
 
 		if constexpr (PrimitiveValue<L> && PrimitiveValue<R>)
 		{
@@ -108,9 +107,9 @@ Value ValueHelper::PerformBinaryLogic(const Value& lhs, const Value& rhs, Op ope
 template <typename Op>
 Value ValueHelper::PerformBinaryComparison(const Value& lhs, const Value& rhs, Op operation)
 {
-	return std::visit([&](auto&& l, auto&& r) -> Value {
-		using L = std::decay_t<decltype(l)>;
-		using R = std::decay_t<decltype(r)>;
+	return std::visit([&]<typename T0, typename T1>(T0&& l, T1&& r) -> Value {
+		using L = std::decay_t<T0>;
+		using R = std::decay_t<T1>;
 
 		if constexpr (std::is_same_v<L, R> && PrimitiveValue<L>)
 		{
@@ -131,8 +130,8 @@ Value ValueHelper::PerformBinaryComparison(const Value& lhs, const Value& rhs, O
 template <typename Op>
 Value ValueHelper::PerformUnaryArithmetic(const Value& val, Op operation)
 {
-	return std::visit([&](auto&& v) -> Value {
-		using T = std::decay_t<decltype(v)>;
+	return std::visit([&]<typename T0>(T0&& v) -> Value {
+		using T = std::decay_t<T0>;
 		if constexpr (PrimitiveValue<T>)
 		{
 			return operation(static_cast<double>(v));
@@ -156,8 +155,8 @@ T ValueHelper::As(const Value& val)
 
 	if constexpr (std::is_arithmetic_v<T>)
 	{
-		return std::visit([&](auto&& v) -> T {
-			using V = std::decay_t<decltype(v)>;
+		return std::visit([&]<typename T0>(T0&& v) -> T {
+			using V = std::decay_t<T0>;
 			if constexpr (std::is_arithmetic_v<V>)
 			{
 				return static_cast<T>(v);
@@ -176,8 +175,8 @@ T ValueHelper::As(const Value& val)
 
 	if constexpr (std::is_same_v<T, bool>)
 	{
-		return std::visit([&](auto&& v) -> bool {
-			using V = std::decay_t<decltype(v)>;
+		return std::visit([&]<typename T0>(T0&& v) -> bool {
+			using V = std::decay_t<T0>;
 			if constexpr (std::is_arithmetic_v<V>)
 			{
 				return v != 0;

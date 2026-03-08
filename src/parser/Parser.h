@@ -1,8 +1,8 @@
+#pragma once
+
 #include "../rulesBuilder/RulesBuilder.h"
 #include "Lexer.h"
 #include "TableBuilder.h"
-
-#include <stack>
 
 class SLRParser
 {

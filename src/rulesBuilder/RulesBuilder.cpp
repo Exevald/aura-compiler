@@ -1,6 +1,5 @@
 #include "RulesBuilder.h"
 
-#include <iostream>
 #include <set>
 #include <sstream>
 
@@ -12,7 +11,7 @@ RulesBuilder::RulesBuilder(std::string const& str)
 
 void RulesBuilder::Init(std::istream& is)
 {
-	std::string content((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
+	const std::string content((std::istreambuf_iterator(is)), std::istreambuf_iterator<char>());
 	m_rules.push_back({ "_S_PRIME_", { "program" } });
 	m_nonTerms.insert("_S_PRIME_");
 
@@ -34,7 +33,9 @@ void RulesBuilder::Init(std::istream& is)
 		if (expectEq)
 		{
 			if (word == "=")
+			{
 				expectEq = false;
+			}
 			continue;
 		}
 
@@ -66,7 +67,7 @@ void RulesBuilder::Init(std::istream& is)
 	{
 		for (auto& sym : rule.rhs)
 		{
-			if (m_nonTerms.find(sym) == m_nonTerms.end())
+			if (!m_nonTerms.contains(sym))
 			{
 				m_lexemes.insert(sym);
 			}
@@ -87,30 +88,31 @@ std::set<std::string> RulesBuilder::GetFirst(std::vector<std::string> const& rhs
 	for (size_t i = 0; i < rhs.size(); ++i)
 	{
 		const std::string& sym = rhs[i];
-		if (m_lexemes.count(sym))
+		if (m_lexemes.contains(sym))
 		{
 			first.insert(sym);
 			return first;
 		}
-		else
+		auto const& symFirst = m_guides[sym];
+		bool hasEpsilon = false;
+		for (auto const& f : symFirst)
 		{
-			auto const& symFirst = m_guides[sym];
-			bool hasEpsilon = false;
-			for (auto const& f : symFirst)
+			if (f == "EPSILON")
 			{
-				if (f == "EPSILON")
-				{
-					hasEpsilon = true;
-				}
-				else
-				{
-					first.insert(f);
-				}
+				hasEpsilon = true;
 			}
-			if (!hasEpsilon)
-				return first;
-			if (i == rhs.size() - 1)
-				first.insert("EPSILON");
+			else
+			{
+				first.insert(f);
+			}
+		}
+		if (!hasEpsilon)
+		{
+			return first;
+		}
+		if (i == rhs.size() - 1)
+		{
+			first.insert("EPSILON");
 		}
 	}
 	return first;
@@ -131,7 +133,9 @@ Rules RulesBuilder::BuildGuidedRules()
 			size_t oldSize = m_guides[r.lhs].size();
 			m_guides[r.lhs].insert(first.begin(), first.end());
 			if (m_guides[r.lhs].size() > oldSize)
+			{
 				changed = true;
+			}
 		}
 	}
 
@@ -150,18 +154,22 @@ Rules RulesBuilder::BuildGuidedRules()
 					std::vector<std::string> rest(r.rhs.begin() + i + 1, r.rhs.end());
 					auto firstRest = GetFirst(rest);
 
-					size_t oldSize = follows[r.rhs[i]].size();
+					const size_t oldSize = follows[r.rhs[i]].size();
 					for (auto const& f : firstRest)
 					{
 						if (f != "EPSILON")
+						{
 							follows[r.rhs[i]].insert(f);
+						}
 					}
-					if (firstRest.count("EPSILON") || rest.empty())
+					if (firstRest.contains("EPSILON") || rest.empty())
 					{
 						follows[r.rhs[i]].insert(follows[r.lhs].begin(), follows[r.lhs].end());
 					}
 					if (follows[r.rhs[i]].size() > oldSize)
+					{
 						changed = true;
+					}
 				}
 			}
 		}
@@ -174,8 +182,7 @@ Rules RulesBuilder::BuildGuidedRules()
 		rule.lhs = r.lhs;
 		rule.rhs = r.rhs;
 
-		auto first = GetFirst(r.rhs);
-		for (auto const& f : first)
+		for (auto first = GetFirst(r.rhs); auto const& f : first)
 		{
 			if (f != "EPSILON")
 				rule.guides.insert(f);
@@ -193,9 +200,11 @@ std::unordered_map<std::string, std::set<std::string>> RulesBuilder::GetFollows(
 {
 	std::unordered_map<std::string, std::set<std::string>> follows;
 	for (const auto& nt : m_nonTerms)
+	{
 		follows[nt] = {};
+	}
 
-	follows["_S_PRIME_"].insert("EOF"); // Всегда начинаем с дополненной грамматики
+	follows["_S_PRIME_"].insert("EOF");
 
 	bool changed = true;
 	while (changed)
@@ -205,25 +214,29 @@ std::unordered_map<std::string, std::set<std::string>> RulesBuilder::GetFollows(
 		{
 			for (size_t i = 0; i < rule.rhs.size(); ++i)
 			{
-				if (m_nonTerms.count(rule.rhs[i]))
+				if (m_nonTerms.contains(rule.rhs[i]))
 				{
 					const std::string& B = rule.rhs[i];
-					std::vector<std::string> rest(rule.rhs.begin() + i + 1, rule.rhs.end());
+					std::vector rest(rule.rhs.begin() + i + 1, rule.rhs.end());
 					auto firstRest = GetFirst(rest);
 
-					size_t oldSize = follows[B].size();
+					const size_t oldSize = follows[B].size();
 					for (const auto& f : firstRest)
 					{
 						if (f != "EPSILON")
+						{
 							follows[B].insert(f);
+						}
 					}
 
-					if (firstRest.count("EPSILON") || (i + 1 == rule.rhs.size()))
+					if (firstRest.contains("EPSILON") || (i + 1 == rule.rhs.size()))
 					{
 						follows[B].insert(follows[rule.lhs].begin(), follows[rule.lhs].end());
 					}
 					if (follows[B].size() > oldSize)
+					{
 						changed = true;
+					}
 				}
 			}
 		}

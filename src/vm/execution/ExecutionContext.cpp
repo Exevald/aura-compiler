@@ -1,5 +1,6 @@
 #include "ExecutionContext.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace VM::Execution
@@ -90,7 +91,7 @@ Scope* ExecutionContext::ExitScope()
 
 	Scope* previous = m_currentScope->parent;
 
-	auto it = std::find_if(m_scopePool.begin(), m_scopePool.end(),
+	const auto it = std::ranges::find_if(m_scopePool,
 		[this](const auto& ptr) { return ptr.get() == m_currentScope; });
 
 	if (it != m_scopePool.end())
@@ -123,7 +124,7 @@ Core::Value* Scope::GetVariable(const std::string& name)
 
 bool Scope::HasVariable(const std::string& name) const
 {
-	if (variables.count(name) > 0)
+	if (variables.contains(name))
 	{
 		return true;
 	}
@@ -157,7 +158,7 @@ void* ExecutionContext::Allocate(size_t size)
 	return ptr;
 }
 
-void ExecutionContext::Release(void* ptr)
+void ExecutionContext::Release(const void* ptr)
 {
 	(void)ptr;
 }
@@ -175,12 +176,12 @@ void ExecutionContext::ClearError()
 	m_errorMessage.clear();
 }
 
-void ExecutionContext::Jump(size_t targetIp)
+void ExecutionContext::Jump(const size_t targetIp)
 {
 	(void)targetIp;
 }
 
-void ExecutionContext::JumpIf(bool condition, size_t targetIp)
+void ExecutionContext::JumpIf(bool condition, const size_t targetIp)
 {
 	if (!condition)
 	{

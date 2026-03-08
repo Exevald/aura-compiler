@@ -1,6 +1,5 @@
 #pragma once
 
-#include <istream>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -23,8 +22,8 @@ public:
 
 	Rules BuildGuidedRules();
 
-	Rules GetRawRules() const { return m_rules; }
-	std::unordered_set<std::string> GetNonTerms() const { return m_nonTerms; }
+	[[nodiscard]] Rules GetRawRules() const { return m_rules; }
+	[[nodiscard]] std::unordered_set<std::string> GetNonTerms() const { return m_nonTerms; }
 	std::unordered_map<std::string, std::set<std::string>> GetFollows();
 
 private:

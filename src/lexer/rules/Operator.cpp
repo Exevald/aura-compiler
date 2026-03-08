@@ -2,11 +2,11 @@
 
 Token operatorRule::ParseOperator(Reader& reader, size_t pos, size_t line)
 {
-	char ch = reader.Get();
+	const char ch = reader.Get();
 
 	if (!reader.EndOfFile())
 	{
-		char next = reader.Peek();
+		const char next = reader.Peek();
 
 		if (ch == '=' && next == '=')
 		{

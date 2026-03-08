@@ -20,7 +20,7 @@ enum class OpCode : uint8_t
 	OP_JUMP_IF_FALSE = 0x11,
 };
 
-inline constexpr std::string_view GetOpCodeName(OpCode opcode) noexcept
+constexpr std::string_view GetOpCodeName(OpCode opcode) noexcept
 {
 	switch (opcode)
 	{

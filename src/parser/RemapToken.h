@@ -4,7 +4,7 @@
 
 namespace remapToken
 {
-std::string RemapTokenTypeToString(const Token& t)
+inline std::string RemapTokenTypeToString(const Token& t)
 {
 	switch (t.type)
 	{

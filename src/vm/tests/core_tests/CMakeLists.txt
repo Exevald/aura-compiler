@@ -10,8 +10,7 @@ target_include_directories(core_tests PRIVATE
 )
 
 target_link_libraries(core_tests PRIVATE
-        GTest::gtest_main
-        GTest::gtest
+        gtest_main
         vm_lib
 )
 

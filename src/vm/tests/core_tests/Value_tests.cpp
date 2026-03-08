@@ -9,15 +9,15 @@ namespace VM::Core::Tests
 
 TEST(ValueTest, CanHoldPrimitiveTypes)
 {
-	Value v_int = int64_t{ 42 };
-	Value v_double = double{ 3.14 };
-	Value v_bool = true;
-	Value v_null = std::monostate{};
+	Value intValue = int64_t{ 42 };
+	Value doubleValue = double{ 3.14 };
+	Value boolValue = true;
+	Value nullValue = std::monostate{};
 
-	EXPECT_TRUE(ValueHelper::IsType<int64_t>(v_int));
-	EXPECT_TRUE(ValueHelper::IsType<double>(v_double));
-	EXPECT_TRUE(ValueHelper::IsType<bool>(v_bool));
-	EXPECT_TRUE(ValueHelper::IsType<std::monostate>(v_null));
+	EXPECT_TRUE(ValueHelper::IsType<int64_t>(intValue));
+	EXPECT_TRUE(ValueHelper::IsType<double>(doubleValue));
+	EXPECT_TRUE(ValueHelper::IsType<bool>(boolValue));
+	EXPECT_TRUE(ValueHelper::IsType<std::monostate>(nullValue));
 }
 
 TEST(ValueTest, GetTypeNames)
@@ -34,9 +34,9 @@ TEST(ValueTest, AsConversion_PrimitiveToPrimitive)
 	EXPECT_EQ(ValueHelper::As<double>(v), 42.0);
 	EXPECT_EQ(ValueHelper::As<int64_t>(v), 42);
 
-	Value v_bool = true;
-	EXPECT_EQ(ValueHelper::As<bool>(v_bool), true);
-	EXPECT_EQ(ValueHelper::As<int64_t>(v_bool), 1);
+	Value boolValue = true;
+	EXPECT_EQ(ValueHelper::As<bool>(boolValue), true);
+	EXPECT_EQ(ValueHelper::As<int64_t>(boolValue), 1);
 }
 
 TEST(ValueTest, AsConversion_ThrowsOnInvalid)

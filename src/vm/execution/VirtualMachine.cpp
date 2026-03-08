@@ -1,8 +1,6 @@
 #include "VirtualMachine.h"
 
 #include <iostream>
-#include <limits>
-#include <stdexcept>
 
 namespace VM::Execution
 {
@@ -23,9 +21,7 @@ bool VirtualMachine::Interpret(Chunk* chunk)
 	m_ip = 0;
 	m_stepsExecuted = 0;
 
-	auto result = Run();
-
-	if (result != ExecutionResult::Success)
+	if (const auto result = Run(); result != ExecutionResult::Success)
 	{
 		if (m_context.HasError())
 		{

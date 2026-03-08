@@ -4,7 +4,7 @@ void whitespaceRule::SkipWhitespacesAndComments(Reader& reader)
 {
 	while (!reader.EndOfFile())
 	{
-		char ch = reader.Peek();
+		const char ch = reader.Peek();
 
 		if (ch == ' ' || ch == '\t' || ch == '\r')
 		{
@@ -28,8 +28,7 @@ void whitespaceRule::SkipWhitespacesAndComments(Reader& reader)
 				break;
 			}
 
-			char next = reader.Peek();
-			if (next == '/')
+			if (const char next = reader.Peek(); next == '/')
 			{
 				reader.Get();
 				while (!reader.EndOfFile())
@@ -42,22 +41,22 @@ void whitespaceRule::SkipWhitespacesAndComments(Reader& reader)
 				}
 				continue;
 			}
-			else if (next == '*')
-			{
-				reader.Get();
-				while (!reader.EndOfFile())
-				{
-					char c = reader.Get();
-					if (c == '*' && !reader.EndOfFile() && reader.Peek() == '/')
-					{
-						reader.Get();
-						break;
-					}
-				}
-				continue;
-			}
 			else
 			{
+				if (next == '*')
+				{
+					reader.Get();
+					while (!reader.EndOfFile())
+					{
+						char c = reader.Get();
+						if (c == '*' && !reader.EndOfFile() && reader.Peek() == '/')
+						{
+							reader.Get();
+							break;
+						}
+					}
+					continue;
+				}
 				reader.Unget();
 				break;
 			}

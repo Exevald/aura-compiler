@@ -13,26 +13,36 @@ Value ValueHelper::PerformUnaryLogic(const Value& val)
 
 std::string_view ValueHelper::GetTypeName(const Value& val) noexcept
 {
-	return std::visit([](auto&& v) -> std::string_view {
-		using T = std::decay_t<decltype(v)>;
+	return std::visit([]<typename T0>(T0&&) -> std::string_view {
+		using T = std::decay_t<T0>;
 		if constexpr (std::is_same_v<T, std::monostate>)
+		{
 			return "void";
+		}
 		else if constexpr (std::is_same_v<T, bool>)
+		{
 			return "bool";
+		}
 		else if constexpr (std::is_same_v<T, int64_t>)
+		{
 			return "int64";
+		}
 		else if constexpr (std::is_same_v<T, double>)
+		{
 			return "float64";
+		}
 		else
+		{
 			return "unknown";
+		}
 	},
 		val);
 }
 
 void ValueHelper::PrintValue(const Value& val, std::ostream& out)
 {
-	std::visit([&](auto&& v) {
-		using T = std::decay_t<decltype(v)>;
+	std::visit([&]<typename T0>(T0&& v) {
+		using T = std::decay_t<T0>;
 		if constexpr (std::is_same_v<T, std::monostate>)
 		{
 			out << "null";
@@ -73,7 +83,7 @@ Value ValueHelper::Multiply(const Value& lhs, const Value& rhs)
 
 Value ValueHelper::Divide(const Value& lhs, const Value& rhs)
 {
-	return PerformBinaryArithmetic(lhs, rhs, [](double a, double b) {
+	return PerformBinaryArithmetic(lhs, rhs, [](const double a, const double b) {
 		if (b == 0.0)
 		{
 			throw std::runtime_error("Division by zero");

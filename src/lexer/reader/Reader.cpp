@@ -3,16 +3,10 @@
 
 Reader::Reader(const std::string& str)
 	: m_input(str)
-	, m_count(0)
-	, m_lineCount(0)
-	, m_prevCount(0)
 {
 }
 
 Reader::Reader(const std::istream& strm)
-	: m_count(0)
-	, m_lineCount(0)
-	, m_prevCount(0)
 {
 	m_input << strm.rdbuf();
 }

@@ -65,7 +65,7 @@ void TableBuilder::Build()
 	}
 }
 
-LR0State TableBuilder::Closure(LR0State state)
+LR0State TableBuilder::Closure(LR0State state) const
 {
 	LR0State resultState = std::move(state);
 	bool changed = true;
@@ -78,12 +78,12 @@ LR0State TableBuilder::Closure(LR0State state)
 			const auto& rule = m_rules[item.ruleIndex];
 			if (item.dotPosition < rule.rhs.size())
 			{
-				std::string nextSym = rule.rhs[item.dotPosition];
-				if (m_nonTerms.count(nextSym))
+				if (std::string nextSymbol = rule.rhs[item.dotPosition];
+					m_nonTerms.contains(nextSymbol))
 				{
 					for (size_t k = 0; k < m_rules.size(); ++k)
 					{
-						if (m_rules[k].lhs == nextSym)
+						if (m_rules[k].lhs == nextSymbol)
 						{
 							if (resultState.insert({ (int)k, 0 }).second)
 							{
@@ -98,15 +98,15 @@ LR0State TableBuilder::Closure(LR0State state)
 	return resultState;
 }
 
-LR0State TableBuilder::GoTo(const LR0State& state, const std::string& str)
+LR0State TableBuilder::GoTo(const LR0State& state, const std::string& str) const
 {
 	LR0State resultState;
-	for (const auto& item : state)
+	for (const auto& [ruleIndex, dotPosition] : state)
 	{
-		const auto& rule = m_rules[item.ruleIndex];
-		if (item.dotPosition < rule.rhs.size() && rule.rhs[item.dotPosition] == str)
+		if (const auto& rule = m_rules[ruleIndex];
+			dotPosition < rule.rhs.size() && rule.rhs[dotPosition] == str)
 		{
-			resultState.insert({ item.ruleIndex, item.dotPosition + 1 });
+			resultState.insert({ ruleIndex, dotPosition + 1 });
 		}
 	}
 	return Closure(resultState);
@@ -125,15 +125,14 @@ int TableBuilder::GetOrAddState(const LR0State& state)
 	return static_cast<int>(m_states.size() - 1);
 }
 
-std::set<std::string> TableBuilder::GetPossibleSymbols(const LR0State& I)
+std::set<std::string> TableBuilder::GetPossibleSymbols(const LR0State& state) const
 {
 	std::set<std::string> res;
-	for (const auto& item : I)
+	for (const auto& [ruleIndex, dotPosition] : state)
 	{
-		const auto& rule = m_rules[item.ruleIndex];
-		if (item.dotPosition < rule.rhs.size())
+		if (const auto& rule = m_rules[ruleIndex]; dotPosition < rule.rhs.size())
 		{
-			res.insert(rule.rhs[item.dotPosition]);
+			res.insert(rule.rhs[dotPosition]);
 		}
 	}
 	return res;

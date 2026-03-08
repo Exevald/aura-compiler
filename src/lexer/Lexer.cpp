@@ -31,7 +31,7 @@ Token Lexer::Get()
 		};
 	}
 
-	char ch = m_reader.Peek();
+	const char ch = m_reader.Peek();
 	if (std::isalpha(static_cast<unsigned char>(ch)) || ch == '_')
 	{
 		return Id();
@@ -61,7 +61,7 @@ Token Lexer::Peek()
 			Error::EMPTY_INPUT
 		};
 	}
-	size_t pos = m_reader.Count();
+	const size_t pos = m_reader.Count();
 	Token token = Get();
 	m_reader.Seek(pos);
 
@@ -76,29 +76,29 @@ bool Lexer::Empty()
 
 Token Lexer::Id()
 {
-	size_t pos = m_reader.Count();
-	size_t line = m_reader.LineCount();
+	const size_t pos = m_reader.Count();
+	const size_t line = m_reader.LineCount();
 	return identifierRule::ParseIdentifier(m_reader, pos, line, *m_keywords);
 }
 
 Token Lexer::Number()
 {
-	size_t pos = m_reader.Count();
-	size_t line = m_reader.LineCount();
+	const size_t pos = m_reader.Count();
+	const size_t line = m_reader.LineCount();
 	return numberRule::ParseNumber(m_reader, pos, line);
 }
 
 Token Lexer::String()
 {
-	size_t pos = m_reader.Count();
-	size_t line = m_reader.LineCount();
+	const size_t pos = m_reader.Count();
+	const size_t line = m_reader.LineCount();
 	return stringRule::ParseString(m_reader, pos, line);
 }
 
 Token Lexer::SpecialChar()
 {
-	size_t pos = m_reader.Count();
-	size_t line = m_reader.LineCount();
+	const size_t pos = m_reader.Count();
+	const size_t line = m_reader.LineCount();
 	return operatorRule::ParseOperator(m_reader, pos, line);
 }
 

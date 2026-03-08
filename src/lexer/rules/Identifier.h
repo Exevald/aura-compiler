@@ -2,7 +2,6 @@
 
 #include "../Token.h"
 #include "../reader/Reader.h"
-#include <unordered_map>
 #include "../KeywordMap.h"
 
 namespace identifierRule

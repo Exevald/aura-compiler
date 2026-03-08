@@ -2,9 +2,8 @@
 
 #include "../rulesBuilder/RulesBuilder.h"
 #include "ParserTypes.h"
-#include "Token.h"
 
-#include <utility>
+#include <map>
 
 class TableBuilder
 {
@@ -19,10 +18,10 @@ public:
 	std::map<int, std::map<std::string, int>> GetGotoTable() { return m_gotoTable; }
 
 private:
-	LR0State Closure(LR0State state);
-	LR0State GoTo(const LR0State& state, const std::string& str);
+	LR0State Closure(LR0State state) const;
+	LR0State GoTo(const LR0State& state, const std::string& str) const;
 	int GetOrAddState(const LR0State& state);
-	std::set<std::string> GetPossibleSymbols(const LR0State& I);
+	std::set<std::string> GetPossibleSymbols(const LR0State& state) const;
 
 	std::vector<LR0State> m_states;
 	std::unordered_set<std::string> m_nonTerms;

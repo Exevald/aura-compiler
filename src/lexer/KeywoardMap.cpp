@@ -61,6 +61,6 @@ KeywordMap::KeywordMap()
 
 TokenType KeywordMap::Lookup(const std::string& id) const
 {
-	auto it = m_map.find(id);
+	const auto it = m_map.find(id);
 	return (it != m_map.end()) ? it->second : TokenType::ID;
 }

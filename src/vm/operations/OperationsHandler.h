@@ -35,8 +35,9 @@ public:
 	int Execute(Core::OpCode opcode, Execution::ExecutionContext& ctx) override
 	{
 		if (opcode != m_opcode)
+		{
 			return -1;
-
+		}
 		try
 		{
 			if (ctx.StackSize() < 2)
@@ -44,9 +45,9 @@ public:
 				ctx.RaiseError("Stack underflow");
 				return -1;
 			}
-			Core::Value rhs = ctx.PopValue();
-			Core::Value lhs = ctx.PopValue();
-			Core::Value result = m_func(lhs, rhs);
+			const Core::Value rhs = ctx.PopValue();
+			const Core::Value lhs = ctx.PopValue();
+			const Core::Value result = m_func(lhs, rhs);
 			ctx.PushValue(result);
 			return 0;
 		}
@@ -77,10 +78,12 @@ public:
 	{
 	}
 
-	int Execute(Core::OpCode opcode, Execution::ExecutionContext& ctx) override
+	int Execute(const Core::OpCode opcode, Execution::ExecutionContext& ctx) override
 	{
 		if (opcode != m_opcode)
+		{
 			return -1;
+		}
 
 		try
 		{

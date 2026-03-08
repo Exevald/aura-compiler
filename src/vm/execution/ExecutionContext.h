@@ -64,7 +64,7 @@ public:
 	CallFrame* CurrentFrame() { return m_callStack.empty() ? nullptr : &m_callStack.top(); }
 
 	void* Allocate(size_t size);
-	void Release(void* ptr);
+	void Release(const void* ptr);
 
 	void RaiseError(const std::string& message);
 	[[nodiscard]] bool HasError() const { return !m_errorMessage.empty(); }

@@ -21,7 +21,6 @@ private:
 	Token SpecialChar();
 	void SkipWhitespaces();
 
-private:
 	Reader m_reader;
 	KeywordMap* m_keywords;
 };

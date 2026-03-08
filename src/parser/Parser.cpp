@@ -1,6 +1,9 @@
 #include "Parser.h"
 #include "RemapToken.h"
 
+#include <iostream>
+#include <stack>
+
 SLRParser::SLRParser(Lexer& lexer, const std::string& grammarText)
 	: m_lexer(lexer)
 {
@@ -25,20 +28,18 @@ bool SLRParser::Parse()
 	while (true)
 	{
 		int s = stack.top();
-		std::string a = remapToken::RemapTokenTypeToString(token);
-		if (m_actionTable[s].count(a))
+		if (std::string a = remapToken::RemapTokenTypeToString(token); m_actionTable[s].contains(a))
 		{
-			Action action = m_actionTable[s][a];
 
-			if (action.type == ActionType::SHIFT)
+			if (auto [type, value] = m_actionTable[s][a]; type == ActionType::SHIFT)
 			{
-				stack.push(action.value);
+				stack.push(value);
 				token = m_lexer.Get();
 			}
-			else if (action.type == ActionType::REDUCE)
+			else if (type == ActionType::REDUCE)
 			{
-				const auto& rule = m_rules[action.value];
-				size_t symbolsToPop = rule.rhs.size();
+				const auto& rule = m_rules[value];
+				const size_t symbolsToPop = rule.rhs.size();
 				for (size_t i = 0; i < symbolsToPop; ++i)
 				{
 					if (!stack.empty())
@@ -52,25 +53,27 @@ bool SLRParser::Parse()
 					}
 				}
 
-				int top = stack.top();
-				if (m_gotoTable.count(top) && m_gotoTable[top].count(rule.lhs))
+				if (int top = stack.top();
+					m_gotoTable.contains(top) && m_gotoTable[top].contains(rule.lhs))
 				{
 					stack.push(m_gotoTable[top][rule.lhs]);
 				}
 				else
 				{
-					std::cerr << "Syntax error: no GOTO entry for " << rule.lhs << " from state " << top << "\n";
+					std::cerr << "Syntax error: no GOTO entry for "
+							  << rule.lhs << " from state " << top << "\n";
 					return false;
 				}
 			}
-			else if (action.type == ActionType::ACCEPT)
+			else if (type == ActionType::ACCEPT)
 			{
 				return true;
 			}
 		}
 		else
 		{
-			std::cerr << "Syntax error at " << token.value << " (line " << token.line << ")\n";
+			std::cerr << "Syntax error at "
+					  << token.value << " (line " << token.line << ")\n";
 			return false;
 		}
 	}

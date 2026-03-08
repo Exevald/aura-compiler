@@ -4,8 +4,8 @@ Token identifierRule::ParseIdentifier(Reader& reader, size_t pos, size_t line, c
 {
 	std::string value;
 
-	char first = reader.Peek();
-	if (!std::isalpha(static_cast<unsigned char>(first)) && first != '_')
+	if (const auto first = reader.Peek();
+		!std::isalpha(static_cast<unsigned char>(first)) && first != '_')
 	{
 		return {
 			TokenType::ERROR,
@@ -19,8 +19,8 @@ Token identifierRule::ParseIdentifier(Reader& reader, size_t pos, size_t line, c
 	value += reader.Get();
 	while (!reader.EndOfFile())
 	{
-		char ch = reader.Peek();
-		if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '_')
+		if (const char ch = reader.Peek();
+			std::isalnum(static_cast<unsigned char>(ch)) || ch == '_')
 		{
 			value += reader.Get();
 		}
@@ -48,8 +48,8 @@ Token identifierRule::ParseIdentifier(Reader& reader, size_t pos, size_t line, c
 			break;
 		}
 
-		char next = reader.Peek();
-		if (!std::isalpha(static_cast<unsigned char>(next)) && next != '_')
+		if (const char next = reader.Peek();
+			!std::isalpha(static_cast<unsigned char>(next)) && next != '_')
 		{
 			break;
 		}
@@ -58,8 +58,8 @@ Token identifierRule::ParseIdentifier(Reader& reader, size_t pos, size_t line, c
 
 		while (!reader.EndOfFile())
 		{
-			char ch = reader.Peek();
-			if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '_')
+			if (const char ch = reader.Peek();
+				std::isalnum(static_cast<unsigned char>(ch)) || ch == '_')
 			{
 				value += reader.Get();
 			}
@@ -72,8 +72,8 @@ Token identifierRule::ParseIdentifier(Reader& reader, size_t pos, size_t line, c
 
 	if (value.find("::") == std::string::npos)
 	{
-		TokenType kwType = keywords.Lookup(value);
-		if (kwType != TokenType::ID)
+		if (const TokenType kwType = keywords.Lookup(value);
+			kwType != TokenType::ID)
 		{
 			return { kwType, value, pos, line, Error::NONE };
 		}

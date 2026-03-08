@@ -6,7 +6,6 @@
 
 #include <functional>
 #include <memory>
-#include <span>
 #include <unordered_map>
 
 namespace VM::Execution
