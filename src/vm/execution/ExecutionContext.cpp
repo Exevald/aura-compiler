@@ -1,6 +1,7 @@
 #include "ExecutionContext.h"
 
 #include <algorithm>
+#include <iostream>
 #include <stdexcept>
 
 namespace VM::Execution
@@ -9,9 +10,10 @@ namespace VM::Execution
 ExecutionContext::ExecutionContext()
 {
 	m_valueStack.reserve(STACK_MAX);
+	m_currentScope = std::make_shared<Scope>();
 }
 
-void ExecutionContext::PushValue(Core::Value value)
+void ExecutionContext::PushValue(const Core::Value value)
 {
 	if (m_valueStack.size() >= STACK_MAX)
 	{
@@ -26,7 +28,7 @@ Core::Value ExecutionContext::PopValue()
 	{
 		throw std::underflow_error("Value stack underflow");
 	}
-	Core::Value val = m_valueStack.back();
+	const Core::Value val = m_valueStack.back();
 	m_valueStack.pop_back();
 	return val;
 }
@@ -64,22 +66,25 @@ void ExecutionContext::ClearStack()
 	m_valueStack.clear();
 }
 
-Scope* ExecutionContext::EnterScope(bool isFunction)
+Scope* ExecutionContext::EnterScope(const bool isFunction)
 {
-	if (m_scopePool.size() >= SCOPE_DEPTH_MAX)
+	size_t depth = 0;
+	for (const auto* scope = m_currentScope.get(); scope != nullptr; scope = scope->parent.get())
+	{
+		++depth;
+	}
+
+	if (depth >= SCOPE_DEPTH_MAX)
 	{
 		throw std::overflow_error("Scope depth limit exceeded");
 	}
 
-	auto newScope = std::make_unique<Scope>();
+	const auto newScope = std::make_shared<Scope>();
 	newScope->parent = m_currentScope;
 	newScope->isFunctionScope = isFunction;
 
-	Scope* ptr = newScope.get();
-	m_scopePool.push_back(std::move(newScope));
-	m_currentScope = ptr;
-
-	return ptr;
+	m_currentScope = newScope;
+	return m_currentScope.get();
 }
 
 Scope* ExecutionContext::ExitScope()
@@ -89,17 +94,8 @@ Scope* ExecutionContext::ExitScope()
 		return nullptr;
 	}
 
-	Scope* previous = m_currentScope->parent;
-
-	const auto it = std::ranges::find_if(m_scopePool,
-		[this](const auto& ptr) { return ptr.get() == m_currentScope; });
-
-	if (it != m_scopePool.end())
-	{
-		m_scopePool.erase(it);
-	}
-
-	m_currentScope = previous;
+	Scope* previous = m_currentScope->parent.get();
+	m_currentScope = m_currentScope->parent;
 	return previous;
 }
 
@@ -150,7 +146,7 @@ CallFrame* ExecutionContext::PopCallFrame()
 	return m_callStack.empty() ? nullptr : &m_callStack.top();
 }
 
-void* ExecutionContext::Allocate(size_t size)
+void* ExecutionContext::Allocate(const size_t size)
 {
 	auto block = std::make_unique<uint8_t[]>(size);
 	void* ptr = block.get();

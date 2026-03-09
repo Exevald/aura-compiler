@@ -4,8 +4,8 @@
 #include <gtest/gtest.h>
 #include <limits>
 
-namespace VM::Core::Tests
-{
+using VM::Core::Value;
+using VM::Core::ValueHelper;
 
 TEST(ValueTest, CanHoldPrimitiveTypes)
 {
@@ -217,5 +217,3 @@ TEST(ValueTest, Division_Precision)
 	auto result = ValueHelper::Divide(a, b);
 	EXPECT_NEAR(ValueHelper::As<double>(result), 0.3333333333333333, 1e-10);
 }
-
-} // namespace VM::Core::Tests

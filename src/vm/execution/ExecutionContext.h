@@ -1,9 +1,7 @@
 #pragma once
 
-#include "../core/OpCode.h"
 #include "../core/Value.h"
 
-#include <iostream>
 #include <map>
 #include <memory>
 #include <stack>
@@ -20,7 +18,7 @@ struct CallFrame
 	Core::Value returnValue;
 	bool hasReturnValue{ false };
 
-	CallFrame(size_t ip_, size_t base_)
+	CallFrame(const size_t ip_, const size_t base_)
 		: ip(ip_)
 		, stackBase(base_)
 	{
@@ -32,7 +30,7 @@ class Scope
 public:
 	using VariableMap = std::map<std::string, Core::Value>;
 
-	Scope* parent{ nullptr };
+	std::shared_ptr<Scope> parent;
 	VariableMap variables;
 	bool isFunctionScope{ false };
 
@@ -46,7 +44,6 @@ class ExecutionContext
 public:
 	ExecutionContext();
 
-
 	void PushValue(Core::Value value);
 	Core::Value PopValue();
 	Core::Value& PeekValue(size_t depth = 0);
@@ -57,7 +54,7 @@ public:
 
 	Scope* EnterScope(bool isFunction = false);
 	Scope* ExitScope();
-	Scope* CurrentScope() { return m_currentScope; }
+	[[nodiscard]] Scope* CurrentScope() const { return m_currentScope.get(); }
 
 	void PushCallFrame(size_t ip, size_t stackBase);
 	CallFrame* PopCallFrame();
@@ -79,7 +76,7 @@ public:
 private:
 	std::vector<Core::Value> m_valueStack;
 	std::stack<CallFrame> m_callStack;
-	Scope* m_currentScope{ nullptr };
+	std::shared_ptr<Scope> m_currentScope;
 	std::vector<std::unique_ptr<Scope>> m_scopePool;
 
 	std::vector<std::unique_ptr<uint8_t[]>> m_memoryPool;
