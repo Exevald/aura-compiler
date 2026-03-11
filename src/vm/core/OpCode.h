@@ -47,4 +47,18 @@ constexpr std::string_view GetOpCodeName(OpCode opcode) noexcept
 	}
 }
 
+constexpr bool OpCodeHasOperand(OpCode opcode)
+{
+	using enum OpCode;
+	switch (opcode)
+	{
+	case OP_CONSTANT:
+	case OP_JUMP:
+	case OP_JUMP_IF_FALSE:
+		return true;
+	default:
+		return false;
+	}
+}
+
 } // namespace VM::Core

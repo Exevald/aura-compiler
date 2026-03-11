@@ -20,7 +20,6 @@ add_executable(
         execution/ExecutionContext.cpp
         execution/Chunk.cpp
         execution/VirtualMachine.cpp
-        operations/OperationsHandler.cpp
 )
 
 add_library(
@@ -29,7 +28,6 @@ add_library(
         execution/ExecutionContext.cpp
         execution/Chunk.cpp
         execution/VirtualMachine.cpp
-        operations/OperationsHandler.cpp
 )
 
 add_subdirectory(tests)

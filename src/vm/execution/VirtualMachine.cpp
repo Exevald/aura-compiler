@@ -1,5 +1,6 @@
 #include "VirtualMachine.h"
 
+#include <format>
 #include <iostream>
 
 namespace VM::Execution
@@ -58,7 +59,12 @@ ExecutionResult VirtualMachine::Run()
 
 		Core::Instruction instr = DecodeInstruction();
 
-		int result = Dispatch(instr);
+		if (m_debugMode)
+		{
+			DebugPrintInstruction(instr);
+		}
+
+		const int result = Dispatch(instr);
 
 		if (result < 0)
 		{
@@ -67,7 +73,7 @@ ExecutionResult VirtualMachine::Run()
 
 		if (result > 0)
 		{
-			m_ip = static_cast<size_t>(result);
+			m_ip = static_cast<size_t>(result - 1);
 		}
 
 		if (instr.opcode == Core::OpCode::OP_RETURN)
@@ -88,12 +94,9 @@ Core::Instruction VirtualMachine::DecodeInstruction()
 	auto opcode = static_cast<Core::OpCode>(opcode_byte);
 
 	uint8_t operand = 0;
-	if (opcode == Core::OpCode::OP_CONSTANT)
+	if (OpCodeHasOperand(opcode) && m_ip < m_currentChunk->GetCodeSize())
 	{
-		if (m_ip < m_currentChunk->GetCodeSize())
-		{
-			operand = m_currentChunk->GetCode()[m_ip++];
-		}
+		operand = m_currentChunk->GetCode()[m_ip++];
 	}
 
 	return Core::Instruction{ opcode, operand };
@@ -192,12 +195,21 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		}
 		Core::Value b = m_context.PopValue();
 		Core::Value a = m_context.PopValue();
-		m_context.PushValue(Core::ValueHelper::Divide(a, b));
+
+		try
+		{
+			m_context.PushValue(Core::ValueHelper::Divide(a, b));
+		}
+		catch (const std::runtime_error& e)
+		{
+			m_context.RaiseError(e.what());
+			return -1;
+		}
 		return 0;
 	}
 
 	case OP_JUMP: {
-		return static_cast<int>(m_ip + instr.operand);
+		return static_cast<int>(instr.operand) + 1;
 	}
 
 	case OP_JUMP_IF_FALSE: {
@@ -209,7 +221,7 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		Core::Value cond = m_context.PopValue();
 		if (!Core::ValueHelper::As<bool>(cond))
 		{
-			return static_cast<int>(m_ip + instr.operand);
+			return static_cast<int>(instr.operand) + 1;
 		}
 		return 0;
 	}
@@ -219,6 +231,21 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		return -1;
 	}
 	}
+}
+
+void VirtualMachine::DebugPrintInstruction(const Core::Instruction& instr) const
+{
+	std::cout << "["
+			  << (m_ip - 1)
+			  << "] "
+			  << Core::GetOpCodeName(instr.opcode)
+			  << " ";
+
+	if (instr.operand != 0)
+	{
+		std::cout << "arg=" << static_cast<int>(instr.operand);
+	}
+	std::cout << "\n";
 }
 
 } // namespace VM::Execution

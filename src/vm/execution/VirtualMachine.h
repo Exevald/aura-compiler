@@ -54,16 +54,21 @@ public:
 	using ExtensionHandler = std::function<int(Core::OpCode, ExecutionContext&)>;
 	void RegisterExtension(Core::OpCode opcode, ExtensionHandler handler);
 
+	void SetDebugMode(const bool enabled) { m_debugMode = enabled; }
+	void SetMaxSteps(const size_t max) { m_maxSteps = max; }
+
 private:
 	ExecutionResult Run();
 	Core::Instruction DecodeInstruction();
 	int Dispatch(const Core::Instruction& instr);
+	void DebugPrintInstruction(const Core::Instruction& instr) const;
 
 	ExecutionContext m_context;
 	Chunk* m_currentChunk{ nullptr };
 	size_t m_ip{ 0 };
 	size_t m_maxSteps{ 1000000 };
 	size_t m_stepsExecuted{ 0 };
+	bool m_debugMode{ false };
 	std::unordered_map<Core::OpCode, ExtensionHandler> m_extensions;
 };
 

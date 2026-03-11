@@ -4,6 +4,7 @@ add_executable(
         execution_tests
         Chunk_tests.cpp
         ExecutionContext_tests.cpp
+        VirtualMachine_tests.cpp
 )
 
 target_include_directories(execution_tests PRIVATE
@@ -12,6 +13,7 @@ target_include_directories(execution_tests PRIVATE
 
 target_link_libraries(execution_tests PRIVATE
         gtest_main
+        gmock
         vm_lib
 )
 

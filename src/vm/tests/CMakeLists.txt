@@ -1,2 +1,3 @@
 add_subdirectory(core_tests)
 add_subdirectory(execution_tests)
+add_subdirectory(integrational_tests)
