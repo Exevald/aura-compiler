@@ -6,6 +6,7 @@
 #include <memory>
 #include <stack>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace VM::Execution
@@ -44,13 +45,21 @@ class ExecutionContext
 public:
 	ExecutionContext();
 
-	void PushValue(Core::Value value);
+	void PushValue(const Core::Value& value);
 	Core::Value PopValue();
 	Core::Value& PeekValue(size_t depth = 0);
 	[[nodiscard]] const Core::Value& PeekValue(size_t depth = 0) const;
 	[[nodiscard]] size_t StackSize() const;
 	[[nodiscard]] bool StackEmpty() const;
 	void ClearStack();
+
+	void DefineGlobal(const std::string& name, Core::Value val);
+	bool GetGlobal(const std::string& name, Core::Value& outValue);
+	bool SetGlobal(const std::string& name, Core::Value val);
+
+	void SetAt(size_t index, const Core::Value& val);
+	const Core::Value& GetAt(size_t index) const;
+	const Core::Value& Peek(size_t distance = 0) const;
 
 	Scope* EnterScope(bool isFunction = false);
 	Scope* ExitScope();
@@ -78,6 +87,7 @@ private:
 	std::stack<CallFrame> m_callStack;
 	std::shared_ptr<Scope> m_currentScope;
 	std::vector<std::unique_ptr<Scope>> m_scopePool;
+	std::unordered_map<std::string, Core::Value> m_globals;
 
 	std::vector<std::unique_ptr<uint8_t[]>> m_memoryPool;
 	size_t m_memoryOffset{ 0 };

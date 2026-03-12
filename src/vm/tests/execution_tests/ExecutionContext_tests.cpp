@@ -260,3 +260,31 @@ TEST(ExecutionContextTest, PrintStack_DoesNotCrash)
 
 	EXPECT_NO_THROW(ctx.PrintStack());
 }
+
+TEST(ExecutionContextTest, GlobalStorage)
+{
+	ExecutionContext ctx;
+	const Value val = 123.0;
+
+	ctx.DefineGlobal("test", val);
+
+	Value retrieved;
+	EXPECT_TRUE(ctx.GetGlobal("test", retrieved));
+	EXPECT_EQ(ValueHelper::As<double>(retrieved), 123.0);
+
+	ctx.SetGlobal("test", 456.0);
+	ctx.GetGlobal("test", retrieved);
+	EXPECT_EQ(ValueHelper::As<double>(retrieved), 456.0);
+}
+
+TEST(ExecutionContextTest, LocalStackAccess)
+{
+	ExecutionContext ctx;
+	ctx.PushValue(10.0);
+	ctx.PushValue(20.0);
+
+	EXPECT_EQ(ValueHelper::As<double>(ctx.GetAt(0)), 10.0);
+
+	ctx.SetAt(1, 99.0);
+	EXPECT_EQ(ValueHelper::As<double>(ctx.Peek(0)), 99.0);
+}

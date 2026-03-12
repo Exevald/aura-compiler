@@ -9,8 +9,8 @@
 namespace VM::Core
 {
 
-using StringPtr = std::shared_ptr<std::string>;
-using Value = std::variant<std::monostate, bool, int64_t, double>;
+using StringPtr = std::shared_ptr<const std::string>;
+using Value = std::variant<std::monostate, bool, int64_t, double, StringPtr>;
 
 template <typename T>
 concept PrimitiveValue = std::is_same_v<T, bool> || std::is_same_v<T, int64_t> || std::is_same_v<T, double>;
@@ -53,6 +53,8 @@ public:
 	}
 
 	static std::string_view GetTypeName(const Value& val) noexcept;
+
+	static bool IsString(const Value& v) { return std::holds_alternative<StringPtr>(v); }
 
 	template <typename T>
 	static T As(const Value& val);
@@ -111,18 +113,21 @@ Value ValueHelper::PerformBinaryComparison(const Value& lhs, const Value& rhs, O
 		using L = std::decay_t<T0>;
 		using R = std::decay_t<T1>;
 
-		if constexpr (std::is_same_v<L, R> && PrimitiveValue<L>)
+		if constexpr (std::is_same_v<L, R>)
 		{
-			return operation(l, r);
+			if constexpr (std::is_invocable_v<Op, L, R>)
+			{
+				return operation(l, r);
+			}
 		}
 		else if constexpr (PrimitiveValue<L> && PrimitiveValue<R>)
 		{
-			return operation(static_cast<double>(l), static_cast<double>(r));
+			if constexpr (std::is_invocable_v<Op, double, double>)
+			{
+				return operation(static_cast<double>(l), static_cast<double>(r));
+			}
 		}
-		else
-		{
-			return operation(false, true);
-		}
+		return false;
 	},
 		lhs, rhs);
 }

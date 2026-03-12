@@ -16,11 +16,18 @@ enum class OpCode : uint8_t
 	OP_DIVIDE = 0x06,
 	OP_RETURN = 0xFF,
 
+	OP_DEFINE_GLOBAL = 0x20,
+	OP_GET_GLOBAL = 0x21,
+	OP_SET_GLOBAL = 0x22,
+
+	OP_GET_LOCAL = 0x23,
+	OP_SET_LOCAL = 0x24,
+
 	OP_JUMP = 0x10,
 	OP_JUMP_IF_FALSE = 0x11,
 };
 
-constexpr std::string_view GetOpCodeName(OpCode opcode) noexcept
+constexpr std::string_view GetOpCodeName(const OpCode opcode) noexcept
 {
 	switch (opcode)
 	{
@@ -38,6 +45,16 @@ constexpr std::string_view GetOpCodeName(OpCode opcode) noexcept
 		return "OP_DIVIDE";
 	case OpCode::OP_RETURN:
 		return "OP_RETURN";
+	case OpCode::OP_DEFINE_GLOBAL:
+		return "OP_DEFINE_GLOBAL";
+	case OpCode::OP_GET_GLOBAL:
+		return "OP_GET_GLOBAL";
+	case OpCode::OP_SET_GLOBAL:
+		return "OP_SET_GLOBAL";
+	case OpCode::OP_GET_LOCAL:
+		return "OP_GET_LOCAL";
+	case OpCode::OP_SET_LOCAL:
+		return "OP_SET_LOCAL";
 	case OpCode::OP_JUMP:
 		return "OP_JUMP";
 	case OpCode::OP_JUMP_IF_FALSE:
@@ -47,7 +64,7 @@ constexpr std::string_view GetOpCodeName(OpCode opcode) noexcept
 	}
 }
 
-constexpr bool OpCodeHasOperand(OpCode opcode)
+constexpr bool OpCodeHasOperand(const OpCode opcode)
 {
 	using enum OpCode;
 	switch (opcode)
@@ -55,6 +72,11 @@ constexpr bool OpCodeHasOperand(OpCode opcode)
 	case OP_CONSTANT:
 	case OP_JUMP:
 	case OP_JUMP_IF_FALSE:
+	case OP_DEFINE_GLOBAL:
+	case OP_GET_GLOBAL:
+	case OP_SET_GLOBAL:
+	case OP_GET_LOCAL:
+	case OP_SET_LOCAL:
 		return true;
 	default:
 		return false;

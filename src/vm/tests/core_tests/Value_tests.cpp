@@ -1,9 +1,12 @@
+#include "StringPool.h"
 #include "Value.h"
 
 #include <cmath>
 #include <gtest/gtest.h>
 #include <limits>
 
+using VM::Core::StringPool;
+using VM::Core::StringPtr;
 using VM::Core::Value;
 using VM::Core::ValueHelper;
 
@@ -28,7 +31,7 @@ TEST(ValueTest, GetTypeNames)
 	EXPECT_EQ(ValueHelper::GetTypeName(2.718), "float64");
 }
 
-TEST(ValueTest, AsConversion_PrimitiveToPrimitive)
+TEST(ValueTest, AsConversionPrimitiveToPrimitive)
 {
 	Value v = 42.0;
 	EXPECT_EQ(ValueHelper::As<double>(v), 42.0);
@@ -39,13 +42,13 @@ TEST(ValueTest, AsConversion_PrimitiveToPrimitive)
 	EXPECT_EQ(ValueHelper::As<int64_t>(boolValue), 1);
 }
 
-TEST(ValueTest, AsConversion_ThrowsOnInvalid)
+TEST(ValueTest, AsConversionThrowsOnInvalid)
 {
 	Value v = std::monostate{};
 	EXPECT_THROW(ValueHelper::As<double>(v), std::bad_variant_access);
 }
 
-TEST(ValueTest, Add_TwoDoubles)
+TEST(ValueTest, AddTwoDoubles)
 {
 	Value a = 10.0;
 	Value b = 5.0;
@@ -55,7 +58,7 @@ TEST(ValueTest, Add_TwoDoubles)
 	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(result), 15.0);
 }
 
-TEST(ValueTest, Add_IntAndDouble_PromotesToDouble)
+TEST(ValueTest, AddIntAndDoublePromotesToDouble)
 {
 	Value a = int64_t{ 10 };
 	Value b = 5.5;
@@ -65,49 +68,49 @@ TEST(ValueTest, Add_IntAndDouble_PromotesToDouble)
 	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(result), 15.5);
 }
 
-TEST(ValueTest, Subtract_Basic)
+TEST(ValueTest, SubtractBasic)
 {
 	Value a = 20.0;
 	Value b = 8.0;
 	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(ValueHelper::Subtract(a, b)), 12.0);
 }
 
-TEST(ValueTest, Multiply_Basic)
+TEST(ValueTest, MultiplyBasic)
 {
 	Value a = 6.0;
 	Value b = 7.0;
 	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(ValueHelper::Multiply(a, b)), 42.0);
 }
 
-TEST(ValueTest, Divide_Basic)
+TEST(ValueTest, DivideBasic)
 {
 	Value a = 100.0;
 	Value b = 4.0;
 	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(ValueHelper::Divide(a, b)), 25.0);
 }
 
-TEST(ValueTest, Divide_ByZero_Throws)
+TEST(ValueTest, DivideByZeroThrows)
 {
 	Value a = 10.0;
 	Value b = 0.0;
 	EXPECT_THROW(ValueHelper::Divide(a, b), std::runtime_error);
 }
 
-TEST(ValueTest, Negate_PositiveToNegative)
+TEST(ValueTest, NegatePositiveToNegative)
 {
 	Value v = 42.0;
 	Value result = ValueHelper::Negate(v);
 	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(result), -42.0);
 }
 
-TEST(ValueTest, Negate_NegativeToPositive)
+TEST(ValueTest, NegateNegativeToPositive)
 {
 	Value v = -15.0;
 	Value result = ValueHelper::Negate(v);
 	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(result), 15.0);
 }
 
-TEST(ValueTest, PerformBinaryLogic_AND)
+TEST(ValueTest, PerformBinaryLogicAND)
 {
 	Value a = true;
 	Value b = false;
@@ -115,7 +118,7 @@ TEST(ValueTest, PerformBinaryLogic_AND)
 	EXPECT_FALSE(ValueHelper::As<bool>(result));
 }
 
-TEST(ValueTest, PerformBinaryLogic_OR)
+TEST(ValueTest, PerformBinaryLogicOR)
 {
 	Value a = false;
 	Value b = true;
@@ -123,14 +126,14 @@ TEST(ValueTest, PerformBinaryLogic_OR)
 	EXPECT_TRUE(ValueHelper::As<bool>(result));
 }
 
-TEST(ValueTest, PerformUnaryLogic_NOT)
+TEST(ValueTest, PerformUnaryLogicNOT)
 {
 	Value v = true;
 	Value result = ValueHelper::PerformUnaryLogic(v);
 	EXPECT_FALSE(ValueHelper::As<bool>(result));
 }
 
-TEST(ValueTest, Compare_Equal)
+TEST(ValueTest, CompareEqual)
 {
 	Value a = 42.0;
 	Value b = 42.0;
@@ -138,7 +141,7 @@ TEST(ValueTest, Compare_Equal)
 	EXPECT_TRUE(ValueHelper::As<bool>(result));
 }
 
-TEST(ValueTest, Compare_NotEqual)
+TEST(ValueTest, CompareNotEqual)
 {
 	Value a = 10.0;
 	Value b = 20.0;
@@ -146,7 +149,7 @@ TEST(ValueTest, Compare_NotEqual)
 	EXPECT_TRUE(ValueHelper::As<bool>(result));
 }
 
-TEST(ValueTest, Compare_LessThan)
+TEST(ValueTest, CompareLessThan)
 {
 	Value a = 5.0;
 	Value b = 10.0;
@@ -154,7 +157,7 @@ TEST(ValueTest, Compare_LessThan)
 		ValueHelper::PerformBinaryComparison(a, b, std::less<double>{})));
 }
 
-TEST(ValueTest, Compare_GreaterThan)
+TEST(ValueTest, CompareGreaterThan)
 {
 	Value a = 15.0;
 	Value b = 10.0;
@@ -162,7 +165,7 @@ TEST(ValueTest, Compare_GreaterThan)
 		ValueHelper::PerformBinaryComparison(a, b, std::greater<double>{})));
 }
 
-TEST(ValueTest, PrintValue_Null)
+TEST(ValueTest, PrintValueNull)
 {
 	Value v = std::monostate{};
 	std::ostringstream oss;
@@ -170,7 +173,7 @@ TEST(ValueTest, PrintValue_Null)
 	EXPECT_EQ(oss.str(), "null");
 }
 
-TEST(ValueTest, PrintValue_Bool)
+TEST(ValueTest, PrintValueBool)
 {
 	std::ostringstream oss;
 	ValueHelper::PrintValue(true, oss);
@@ -181,7 +184,7 @@ TEST(ValueTest, PrintValue_Bool)
 	EXPECT_EQ(oss.str(), "false");
 }
 
-TEST(ValueTest, PrintValue_Number)
+TEST(ValueTest, PrintValueNumber)
 {
 	std::ostringstream oss;
 	ValueHelper::PrintValue(42.0, oss);
@@ -195,14 +198,14 @@ TEST(ValueTest, ToString)
 	EXPECT_EQ(ValueHelper::ToString(std::monostate{}), "null");
 }
 
-TEST(ValueTest, Arithmetic_WithLargeNumbers)
+TEST(ValueTest, ArithmeticWithLargeNumbers)
 {
 	Value a = std::numeric_limits<double>::max() / 2;
 	Value b = std::numeric_limits<double>::max() / 2;
 	EXPECT_NO_THROW(ValueHelper::Add(a, b));
 }
 
-TEST(ValueTest, Arithmetic_WithNaN)
+TEST(ValueTest, ArithmeticWithNaN)
 {
 	Value a = std::numeric_limits<double>::quiet_NaN();
 	Value b = 1.0;
@@ -210,10 +213,90 @@ TEST(ValueTest, Arithmetic_WithNaN)
 	EXPECT_TRUE(std::isnan(ValueHelper::As<double>(result)));
 }
 
-TEST(ValueTest, Division_Precision)
+TEST(ValueTest, DivisionPrecision)
 {
 	Value a = 1.0;
 	Value b = 3.0;
 	auto result = ValueHelper::Divide(a, b);
 	EXPECT_NEAR(ValueHelper::As<double>(result), 0.3333333333333333, 1e-10);
+}
+
+TEST(ValueTest, StringStorageAndType)
+{
+	StringPool pool;
+	auto s1 = pool.Intern("hello");
+	const Value v = s1;
+
+	EXPECT_TRUE(ValueHelper::IsString(v));
+	EXPECT_EQ(ValueHelper::GetTypeName(v), "string");
+
+	const auto retrieved = ValueHelper::As<StringPtr>(v);
+	EXPECT_EQ(*retrieved, "hello");
+}
+
+TEST(ValueTest, StringInterningLogic)
+{
+	StringPool pool;
+	const std::string str1 = "aura";
+	const std::string str2 = "aura";
+
+	const auto p1 = pool.Intern(str1);
+	const auto p2 = pool.Intern(str2);
+
+	EXPECT_EQ(p1.get(), p2.get());
+
+	const auto p3 = pool.Intern("other string");
+	EXPECT_NE(p1.get(), p3.get());
+}
+
+TEST(ValueTest, StringAddConcatenation)
+{
+	StringPool pool;
+	Value s1 = pool.Intern("Hello");
+	Value s2 = pool.Intern(" World");
+
+	Value res1 = ValueHelper::Add(s1, s2);
+	EXPECT_EQ(ValueHelper::ToString(res1), "Hello World");
+
+	Value n = 42;
+	Value res2 = ValueHelper::Add(s1, n);
+	EXPECT_EQ(ValueHelper::ToString(res2), "Hello42");
+
+	Value res3 = ValueHelper::Add(n, s1);
+	EXPECT_EQ(ValueHelper::ToString(res3), "42Hello");
+}
+
+TEST(ValueTest, StringComparison)
+{
+	StringPool pool;
+	Value v1 = pool.Intern("apple");
+	Value v2 = pool.Intern("apple");
+	Value v3 = pool.Intern("orange");
+
+	auto eq = [](const auto& a, const auto& b) { return a == b; };
+
+	EXPECT_TRUE(ValueHelper::As<bool>(ValueHelper::PerformBinaryComparison(v1, v2, eq)));
+	EXPECT_FALSE(ValueHelper::As<bool>(ValueHelper::PerformBinaryComparison(v1, v3, eq)));
+}
+
+TEST(ValueTest, StringPrintAndToString)
+{
+	StringPool pool;
+	const Value v = pool.Intern("asd");
+
+	EXPECT_EQ(ValueHelper::ToString(v), "asd");
+
+	std::ostringstream oss;
+	ValueHelper::PrintValue(v, oss);
+	EXPECT_EQ(oss.str(), "asd");
+}
+
+TEST(ValueTest, StringAsBool)
+{
+	StringPool pool;
+	Value v = pool.Intern("anything");
+	EXPECT_TRUE(ValueHelper::As<bool>(v));
+
+	Value n = std::monostate{};
+	EXPECT_THROW(ValueHelper::As<StringPtr>(n), std::bad_variant_access);
 }

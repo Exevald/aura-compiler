@@ -2,6 +2,8 @@
 
 #include "../core/Instruction.h"
 #include "../core/OpCode.h"
+#include "../core/StringPool.h"
+#include "Chunk.h"
 #include "ExecutionContext.h"
 
 #include <functional>
@@ -18,21 +20,6 @@ enum class ExecutionResult
 	Timeout,
 	StackOverflow,
 	UnknownOpcode
-};
-
-struct Chunk
-{
-	std::vector<uint8_t> code;
-	std::vector<Core::Value> constants;
-	std::string debugName;
-
-	void Write(Core::OpCode opcode);
-	void WriteConstant(const Core::Value& value);
-	uint8_t AddConstant(const Core::Value& value);
-	[[nodiscard]] size_t GetCodeSize() const { return code.size(); }
-	[[nodiscard]] const std::vector<uint8_t>& GetCode() const { return code; }
-	[[nodiscard]] const std::vector<Core::Value>& GetConstants() const { return constants; }
-	void Clear();
 };
 
 class VirtualMachine
@@ -70,6 +57,7 @@ private:
 	size_t m_stepsExecuted{ 0 };
 	bool m_debugMode{ false };
 	std::unordered_map<Core::OpCode, ExtensionHandler> m_extensions;
+	Core::StringPool m_stringPool;
 };
 
 } // namespace VM::Execution

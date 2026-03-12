@@ -17,6 +17,7 @@ add_executable(
         vm
         main.cpp
         core/Value.cpp
+        core/StringPool.cpp
         execution/ExecutionContext.cpp
         execution/Chunk.cpp
         execution/VirtualMachine.cpp
@@ -25,6 +26,7 @@ add_executable(
 add_library(
         vm_lib
         core/Value.cpp
+        core/StringPool.cpp
         execution/ExecutionContext.cpp
         execution/Chunk.cpp
         execution/VirtualMachine.cpp

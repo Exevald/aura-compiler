@@ -129,19 +129,17 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	}
 
 	case OP_CONSTANT: {
-		uint8_t index = instr.operand;
-		if (index >= m_currentChunk->GetConstants().size())
+		if (instr.operand >= m_currentChunk->GetConstants().size())
 		{
-			m_context.RaiseError("Constant index" + std::to_string(index) + "out of bounds \n");
+			m_context.RaiseError("Constant index " + std::to_string(instr.operand) + " out of bounds");
 			return -1;
 		}
-
-		m_context.PushValue(m_currentChunk->GetConstants()[index]);
+		m_context.PushValue(m_currentChunk->GetConstants()[instr.operand]);
 		return 0;
 	}
 
 	case OP_NEGATE: {
-		if (m_context.StackSize() < 1)
+		if (m_context.StackEmpty())
 		{
 			m_context.RaiseError("Stack underflow in OP_NEGATE");
 			return -1;
@@ -157,40 +155,27 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 			m_context.RaiseError("Stack underflow in OP_ADD");
 			return -1;
 		}
-		Core::Value b = m_context.PopValue();
-		Core::Value a = m_context.PopValue();
-		m_context.PushValue(Core::ValueHelper::Add(a, b));
-		return 0;
-	}
+		auto b = m_context.PopValue();
+		auto a = m_context.PopValue();
 
-	case OP_SUBTRACT: {
-		if (m_context.StackSize() < 2)
+		if (Core::ValueHelper::IsString(a) || Core::ValueHelper::IsString(b))
 		{
-			m_context.RaiseError("Stack underflow in OP_SUBTRACT");
-			return -1;
+			std::string concatenated = Core::ValueHelper::ToString(a) + Core::ValueHelper::ToString(b);
+			m_context.PushValue(m_stringPool.Intern(concatenated));
 		}
-		Core::Value b = m_context.PopValue();
-		Core::Value a = m_context.PopValue();
-		m_context.PushValue(Core::ValueHelper::Subtract(a, b));
-		return 0;
-	}
-
-	case OP_MULTIPLY: {
-		if (m_context.StackSize() < 2)
+		else
 		{
-			m_context.RaiseError("Stack underflow in OP_MULTIPLY");
-			return -1;
+			m_context.PushValue(Core::ValueHelper::Add(a, b));
 		}
-		Core::Value b = m_context.PopValue();
-		Core::Value a = m_context.PopValue();
-		m_context.PushValue(Core::ValueHelper::Multiply(a, b));
 		return 0;
 	}
 
+	case OP_SUBTRACT:
+	case OP_MULTIPLY:
 	case OP_DIVIDE: {
 		if (m_context.StackSize() < 2)
 		{
-			m_context.RaiseError("Stack underflow in OP_DIVIDE");
+			m_context.RaiseError("Stack underflow in binary operation");
 			return -1;
 		}
 		Core::Value b = m_context.PopValue();
@@ -198,7 +183,12 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 
 		try
 		{
-			m_context.PushValue(Core::ValueHelper::Divide(a, b));
+			if (instr.opcode == OP_SUBTRACT)
+				m_context.PushValue(Core::ValueHelper::Subtract(a, b));
+			else if (instr.opcode == OP_MULTIPLY)
+				m_context.PushValue(Core::ValueHelper::Multiply(a, b));
+			else
+				m_context.PushValue(Core::ValueHelper::Divide(a, b));
 		}
 		catch (const std::runtime_error& e)
 		{
@@ -208,28 +198,101 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		return 0;
 	}
 
-	case OP_JUMP: {
-		return static_cast<int>(instr.operand) + 1;
+	case OP_DEFINE_GLOBAL: {
+		if (instr.operand >= m_currentChunk->GetConstants().size())
+		{
+			m_context.RaiseError("Global name index out of bounds");
+			return -1;
+		}
+		if (m_context.StackEmpty())
+		{
+			m_context.RaiseError("Stack underflow in OP_DEFINE_GLOBAL");
+			return -1;
+		}
+		std::string name = Core::ValueHelper::ToString(m_currentChunk->GetConstants()[instr.operand]);
+		m_context.DefineGlobal(name, m_context.PopValue());
+		return 0;
+	}
+
+	case OP_GET_GLOBAL:
+	case OP_SET_GLOBAL: {
+		if (instr.operand >= m_currentChunk->GetConstants().size())
+		{
+			m_context.RaiseError("Global index out of bounds");
+			return -1;
+		}
+		std::string name = Core::ValueHelper::ToString(m_currentChunk->GetConstants()[instr.operand]);
+
+		if (instr.opcode == OP_GET_GLOBAL)
+		{
+			Core::Value val;
+			if (!m_context.GetGlobal(name, val))
+			{
+				m_context.RaiseError("Undefined variable: " + name);
+				return -1;
+			}
+			m_context.PushValue(val);
+		}
+		else
+		{
+			if (m_context.StackEmpty())
+			{
+				m_context.RaiseError("Stack underflow in OP_SET_GLOBAL");
+				return -1;
+			}
+			if (!m_context.SetGlobal(name, m_context.PeekValue(0)))
+			{
+				m_context.RaiseError("Undefined variable: " + name);
+				return -1;
+			}
+		}
+		return 0;
+	}
+
+	case OP_GET_LOCAL: {
+		if (instr.operand >= m_context.StackSize())
+		{
+			m_context.RaiseError("Local variable index " + std::to_string(instr.operand) + " out of bounds");
+			return -1;
+		}
+		m_context.PushValue(m_context.GetAt(instr.operand));
+		return 0;
+	}
+
+	case OP_SET_LOCAL: {
+		if (instr.operand >= m_context.StackSize())
+		{
+			m_context.RaiseError("Local assignment index " + std::to_string(instr.operand) + " out of bounds");
+			return -1;
+		}
+		if (m_context.StackEmpty())
+		{
+			m_context.RaiseError("Stack underflow in OP_SET_LOCAL");
+			return -1;
+		}
+		m_context.SetAt(instr.operand, m_context.PeekValue(0));
+		return 0;
 	}
 
 	case OP_JUMP_IF_FALSE: {
-		if (m_context.StackSize() < 1)
+		if (m_context.StackEmpty())
 		{
 			m_context.RaiseError("Stack underflow in OP_JUMP_IF_FALSE");
 			return -1;
 		}
-		Core::Value cond = m_context.PopValue();
-		if (!Core::ValueHelper::As<bool>(cond))
+		if (!Core::ValueHelper::As<bool>(m_context.PopValue()))
 		{
 			return static_cast<int>(instr.operand) + 1;
 		}
 		return 0;
 	}
 
-	default: {
+	case OP_JUMP:
+		return static_cast<int>(instr.operand) + 1;
+
+	default:
 		m_context.RaiseError("Unknown opcode: " + std::to_string(static_cast<uint8_t>(instr.opcode)));
 		return -1;
-	}
 	}
 }
 

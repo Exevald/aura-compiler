@@ -1,5 +1,3 @@
-#pragma once
-
 #include "Chunk.h"
 
 #include <limits>

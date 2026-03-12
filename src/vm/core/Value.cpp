@@ -31,6 +31,10 @@ std::string_view ValueHelper::GetTypeName(const Value& val) noexcept
 		{
 			return "float64";
 		}
+		else if constexpr (std::is_same_v<T, StringPtr>)
+		{
+			return "string";
+		}
 		else
 		{
 			return "unknown";
@@ -43,7 +47,18 @@ void ValueHelper::PrintValue(const Value& val, std::ostream& out)
 {
 	std::visit([&]<typename T0>(T0&& v) {
 		using T = std::decay_t<T0>;
-		if constexpr (std::is_same_v<T, std::monostate>)
+		if constexpr (std::is_same_v<T, StringPtr>)
+		{
+			if (v)
+			{
+				out << *v;
+			}
+			else
+			{
+				out << "null";
+			}
+		}
+		else if constexpr (std::is_same_v<T, std::monostate>)
 		{
 			out << "null";
 		}
@@ -68,6 +83,10 @@ std::string ValueHelper::ToString(const Value& val)
 
 Value ValueHelper::Add(const Value& lhs, const Value& rhs)
 {
+	if (IsString(lhs) || IsString(rhs))
+	{
+		return std::make_shared<const std::string>(ToString(lhs) + ToString(rhs));
+	}
 	return PerformBinaryArithmetic(lhs, rhs, std::plus<double>{});
 }
 

@@ -3,6 +3,7 @@ include(GoogleTest)
 add_executable(
         integrational_tests
         Integrational_tests.cpp
+        Variables_tests.cpp
 )
 
 target_include_directories(integrational_tests PRIVATE

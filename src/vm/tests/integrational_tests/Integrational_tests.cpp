@@ -13,7 +13,7 @@ std::string CaptureVMOutput(const std::function<void(VirtualMachine&, Chunk&)>& 
 	Chunk chunk;
 	VirtualMachine vm;
 
-	std::ostringstream oss;
+	const std::ostringstream oss;
 	std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
 
 	testFunc(vm, chunk);

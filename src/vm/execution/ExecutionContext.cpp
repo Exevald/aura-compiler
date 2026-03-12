@@ -13,7 +13,7 @@ ExecutionContext::ExecutionContext()
 	m_currentScope = std::make_shared<Scope>();
 }
 
-void ExecutionContext::PushValue(const Core::Value value)
+void ExecutionContext::PushValue(const Core::Value& value)
 {
 	if (m_valueStack.size() >= STACK_MAX)
 	{
@@ -64,6 +64,58 @@ bool ExecutionContext::StackEmpty() const
 void ExecutionContext::ClearStack()
 {
 	m_valueStack.clear();
+}
+
+void ExecutionContext::DefineGlobal(const std::string& name, Core::Value val)
+{
+	m_globals[name] = std::move(val);
+}
+
+bool ExecutionContext::GetGlobal(const std::string& name, Core::Value& outValue)
+{
+	if (const auto it = m_globals.find(name); it != m_globals.end())
+	{
+		outValue = it->second;
+		return true;
+	}
+	return false;
+}
+
+bool ExecutionContext::SetGlobal(const std::string& name, Core::Value val)
+{
+	if (const auto it = m_globals.find(name); it != m_globals.end())
+	{
+		it->second = std::move(val);
+		return true;
+	}
+	return false;
+}
+
+void ExecutionContext::SetAt(const size_t index, const Core::Value& val)
+{
+	if (index >= m_valueStack.size())
+	{
+		throw std::out_of_range("Local variable index out of bounds");
+	}
+	m_valueStack[index] = val;
+}
+
+const Core::Value& ExecutionContext::GetAt(const size_t index) const
+{
+	if (index >= m_valueStack.size())
+	{
+		throw std::out_of_range("Local variable index out of bounds");
+	}
+	return m_valueStack[index];
+}
+
+const Core::Value& ExecutionContext::Peek(const size_t distance) const
+{
+	if (distance >= m_valueStack.size())
+	{
+		throw std::out_of_range("Peek out of bounds");
+	}
+	return m_valueStack[m_valueStack.size() - 1 - distance];
 }
 
 Scope* ExecutionContext::EnterScope(const bool isFunction)
