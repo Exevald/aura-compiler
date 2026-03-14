@@ -120,6 +120,38 @@ Value ValueHelper::Divide(const Value& lhs, const Value& rhs)
 	});
 }
 
+Value ValueHelper::DivideInt(const Value& lhs, const Value& rhs)
+{
+	return std::visit([]<typename T1, typename T2>(T1 a, T2 b) -> Value {
+		if constexpr (std::is_arithmetic_v<T1> && std::is_arithmetic_v<T2>)
+		{
+			if (static_cast<int64_t>(b) == 0)
+			{
+				throw std::runtime_error("Division by zero");
+			}
+			return static_cast<int64_t>(a) / static_cast<int64_t>(b);
+		}
+		throw std::runtime_error("Integer division requires numeric types");
+	},
+		lhs, rhs);
+}
+
+Value ValueHelper::Modulo(const Value& lhs, const Value& rhs)
+{
+	return std::visit([]<typename T1, typename T2>(T1 a, T2 b) -> Value {
+		if constexpr (std::is_arithmetic_v<T1> && std::is_arithmetic_v<T2>)
+		{
+			if (static_cast<int64_t>(b) == 0)
+			{
+				throw std::runtime_error("Modulo by zero");
+			}
+			return static_cast<int64_t>(a) % static_cast<int64_t>(b);
+		}
+		throw std::runtime_error("Modulo requires numeric types");
+	},
+		lhs, rhs);
+}
+
 Value ValueHelper::Negate(const Value& val)
 {
 	return PerformUnaryArithmetic(val, [](double x) { return -x; });

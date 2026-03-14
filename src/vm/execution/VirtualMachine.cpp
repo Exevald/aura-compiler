@@ -89,10 +89,6 @@ ExecutionResult VirtualMachine::Run()
 
 			if (result < 0)
 			{
-				if (!m_context.HasError())
-				{
-					return ExecutionResult::RuntimeError;
-				}
 				return ExecutionResult::RuntimeError;
 			}
 
@@ -105,11 +101,6 @@ ExecutionResult VirtualMachine::Run()
 			{
 				auto& currentIp = m_context.CurrentFrame().ip;
 				currentIp = static_cast<int>(currentIp) + result;
-			}
-
-			if (result > 0)
-			{
-				m_context.CurrentFrame().ip += static_cast<size_t>(result);
 			}
 		}
 		catch (const std::exception& e)
@@ -347,27 +338,54 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	case OP_JUMP_IF_TRUE: {
 		if (Core::ValueHelper::As<bool>(m_context.PeekValue(0)))
 		{
-			return instr.operand;
+			frame.ip += instr.operand;
 		}
-		m_context.PopValue();
-		return 0;
+		else
+		{
+			m_context.PopValue();
+		}
 	}
+		return 0;
 
 	case OP_JUMP_IF_FALSE: {
 		if (!Core::ValueHelper::As<bool>(m_context.PeekValue(0)))
 		{
-			return instr.operand;
+			frame.ip += instr.operand;
 		}
-		m_context.PopValue();
+		else
+		{
+			m_context.PopValue();
+		}
 		return 0;
 	}
 
 	case OP_JUMP: {
-		return instr.operand;
+		frame.ip += instr.operand;
+		return 0;
 	}
 
 	case OP_LOOP: {
-		return -static_cast<int>(instr.operand);
+		frame.ip -= instr.operand;
+		return 0;
+	}
+
+	case OP_POP: {
+		m_context.PopValue();
+		return 0;
+	}
+
+	case OP_MOD: {
+		Value b = m_context.PopValue();
+		Value a = m_context.PopValue();
+		m_context.PushValue(Core::ValueHelper::Modulo(a, b));
+		return 0;
+	}
+
+	case OP_DIV: {
+		Value b = m_context.PopValue();
+		Value a = m_context.PopValue();
+		m_context.PushValue(Core::ValueHelper::DivideInt(a, b));
+		return 0;
 	}
 
 	default:

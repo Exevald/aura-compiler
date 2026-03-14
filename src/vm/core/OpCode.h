@@ -14,33 +14,35 @@ enum class OpCode : uint8_t
 	OP_SUBTRACT = 0x04,
 	OP_MULTIPLY = 0x05,
 	OP_DIVIDE = 0x06,
-	OP_RETURN = 0xFF,
 
 	OP_EQUAL = 0x07,
 	OP_GREATER = 0x08,
 	OP_LESS = 0x09,
 	OP_NOT = 0x0A,
-
 	OP_GREATER_EQUAL = 0x0B,
 	OP_LESS_EQUAL = 0x0C,
 	OP_NOT_EQUAL = 0x0D,
-
-	OP_AND = 0x0E,
-	OP_OR = 0x0F,
-
-	OP_DEFINE_GLOBAL = 0x20,
-	OP_GET_GLOBAL = 0x21,
-	OP_SET_GLOBAL = 0x22,
-
-	OP_GET_LOCAL = 0x23,
-	OP_SET_LOCAL = 0x24,
 
 	OP_JUMP = 0x10,
 	OP_JUMP_IF_FALSE = 0x11,
 	OP_JUMP_IF_TRUE = 0x12,
 	OP_LOOP = 0x13,
+	OP_POP = 0x14,
+
+	OP_DEFINE_GLOBAL = 0x20,
+	OP_GET_GLOBAL = 0x21,
+	OP_SET_GLOBAL = 0x22,
+	OP_GET_LOCAL = 0x23,
+	OP_SET_LOCAL = 0x24,
 
 	OP_CALL = 0x30,
+
+	OP_MOD = 0x40,
+	OP_DIV = 0x41,
+	OP_AND = 0x42,
+	OP_OR = 0x43,
+
+	OP_RETURN = 0xFF,
 };
 
 constexpr std::string_view GetOpCodeName(const OpCode opcode) noexcept

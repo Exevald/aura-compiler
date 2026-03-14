@@ -374,3 +374,63 @@ TEST(IntegrationTest, ShortCircuitAnd)
 
 	EXPECT_THAT(output, ::testing::HasSubstr("Result: false"));
 }
+
+TEST(IntegrationTest, DivAndMod)
+{
+	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
+		chunk.WriteConstant(10.0);
+		chunk.WriteConstant(3.0);
+		chunk.Write(OP_DIV);
+		chunk.Write(OP_RETURN);
+		vm.Interpret(&chunk);
+	});
+	EXPECT_THAT(output, ::testing::HasSubstr("Result: 3"));
+
+	const auto output2 = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
+		chunk.WriteConstant(10.0);
+		chunk.WriteConstant(3.0);
+		chunk.Write(OP_MOD);
+		chunk.Write(OP_RETURN);
+		vm.Interpret(&chunk);
+	});
+	EXPECT_THAT(output2, ::testing::HasSubstr("Result: 1"));
+}
+
+TEST(IntegrationTest, WhileLoopSum)
+{
+	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
+		chunk.WriteConstant(0.0);
+
+		const size_t loopStart = chunk.GetCodeSize();
+
+		chunk.Write(OP_GET_LOCAL);
+		chunk.code.push_back(0);
+		chunk.WriteConstant(3.0);
+		chunk.Write(OP_LESS);
+
+		chunk.Write(OP_JUMP_IF_FALSE);
+		const size_t exitJumpPatch = chunk.code.size();
+		chunk.code.push_back(0);
+
+		chunk.Write(OP_GET_LOCAL);
+		chunk.code.push_back(0);
+		chunk.WriteConstant(1.0);
+		chunk.Write(OP_ADD);
+		chunk.Write(OP_SET_LOCAL);
+		chunk.code.push_back(0);
+		chunk.Write(OP_POP);
+
+		const size_t offset = chunk.GetCodeSize() - loopStart + 2;
+		chunk.Write(OP_LOOP);
+		chunk.code.push_back(static_cast<uint8_t>(offset));
+
+		chunk.code[exitJumpPatch] = static_cast<uint8_t>(chunk.GetCodeSize() - exitJumpPatch - 1);
+
+		chunk.Write(OP_GET_LOCAL);
+		chunk.code.push_back(0);
+		chunk.Write(OP_RETURN);
+		vm.Interpret(&chunk);
+	});
+
+	EXPECT_THAT(output, ::testing::HasSubstr("Result: 3"));
+}

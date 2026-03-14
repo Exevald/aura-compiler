@@ -96,6 +96,8 @@ public:
 	static Value Subtract(const Value& lhs, const Value& rhs);
 	static Value Multiply(const Value& lhs, const Value& rhs);
 	static Value Divide(const Value& lhs, const Value& rhs);
+	static Value DivideInt(const Value& lhs, const Value& rhs) ;
+	static Value Modulo(const Value& lhs, const Value& rhs) ;
 	static Value Negate(const Value& val);
 
 	static bool Equal(const Value& lhs, const Value& rhs);
