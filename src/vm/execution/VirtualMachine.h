@@ -33,7 +33,7 @@ public:
 	VirtualMachine(VirtualMachine&&) noexcept = default;
 	VirtualMachine& operator=(VirtualMachine&&) noexcept = default;
 
-	bool Interpret(Chunk* chunk);
+	bool Interpret(const Chunk* chunk);
 
 	ExecutionContext& GetContext() { return m_context; }
 	[[nodiscard]] const ExecutionContext& GetContext() const { return m_context; }
@@ -46,7 +46,7 @@ public:
 
 private:
 	ExecutionResult Run();
-	Core::Instruction DecodeInstruction();
+	static Core::Instruction DecodeInstruction();
 	int Dispatch(const Core::Instruction& instr);
 	void DebugPrintInstruction(const Core::Instruction& instr) const;
 

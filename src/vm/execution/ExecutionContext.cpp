@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
+#include <utility>
 
 namespace VM::Execution
 {
@@ -10,6 +11,7 @@ namespace VM::Execution
 ExecutionContext::ExecutionContext()
 {
 	m_valueStack.reserve(STACK_MAX);
+	m_frames.reserve(FRAMES_MAX);
 	m_currentScope = std::make_shared<Scope>();
 }
 
@@ -24,7 +26,9 @@ void ExecutionContext::PushValue(const Core::Value& value)
 
 Core::Value ExecutionContext::PopValue()
 {
-	if (m_valueStack.empty())
+
+	if (size_t floor = m_frames.empty() ? 0 : m_frames.back().stackBase;
+		m_valueStack.size() <= floor)
 	{
 		throw std::underflow_error("Value stack underflow");
 	}
@@ -32,7 +36,6 @@ Core::Value ExecutionContext::PopValue()
 	m_valueStack.pop_back();
 	return val;
 }
-
 Core::Value& ExecutionContext::PeekValue(size_t depth)
 {
 	if (depth >= m_valueStack.size())
@@ -64,6 +67,7 @@ bool ExecutionContext::StackEmpty() const
 void ExecutionContext::ClearStack()
 {
 	m_valueStack.clear();
+	m_frames.clear();
 }
 
 void ExecutionContext::DefineGlobal(const std::string& name, Core::Value val)
@@ -153,12 +157,12 @@ Scope* ExecutionContext::ExitScope()
 
 void Scope::SetVariable(std::string name, Core::Value value)
 {
-	variables[std::move(name)] = value;
+	variables[std::move(name)] = std::move(value);
 }
 
 Core::Value* Scope::GetVariable(const std::string& name)
 {
-	auto it = variables.find(name);
+	const auto it = variables.find(name);
 	if (it != variables.end())
 	{
 		return &it->second;
@@ -183,19 +187,60 @@ bool Scope::HasVariable(const std::string& name) const
 	return false;
 }
 
-void ExecutionContext::PushCallFrame(size_t ip, size_t stackBase)
+void ExecutionContext::PushFrame(Core::FunctionPtr func, size_t base)
 {
-	m_callStack.emplace(ip, stackBase);
+	if (m_frames.size() >= FRAMES_MAX)
+	{
+		throw std::runtime_error("Stack overflow (too many frames)");
+	}
+	m_frames.emplace_back(std::move(func), base);
 }
 
-CallFrame* ExecutionContext::PopCallFrame()
+void ExecutionContext::PopFrame()
 {
-	if (m_callStack.empty())
+	if (m_frames.empty())
 	{
-		return nullptr;
+		throw std::runtime_error("Stack underflow (no frames to pop)");
 	}
-	m_callStack.pop();
-	return m_callStack.empty() ? nullptr : &m_callStack.top();
+	m_frames.pop_back();
+}
+
+CallFrame& ExecutionContext::CurrentFrame()
+{
+	if (m_frames.empty())
+	{
+		throw std::runtime_error("No active call frame");
+	}
+	return m_frames.back();
+}
+
+const CallFrame& ExecutionContext::CurrentFrame() const
+{
+	if (m_frames.empty())
+	{
+		throw std::runtime_error("No active call frame");
+	}
+	return m_frames.back();
+}
+
+void ExecutionContext::SetLocal(const size_t index, const Core::Value& val)
+{
+	const size_t absoluteIndex = m_frames.back().stackBase + index;
+	if (absoluteIndex >= m_valueStack.size())
+	{
+		throw std::out_of_range("Local index out of bounds");
+	}
+	m_valueStack[absoluteIndex] = val;
+}
+
+const Core::Value& ExecutionContext::GetLocal(const size_t index) const
+{
+	const size_t absoluteIndex = m_frames.back().stackBase + index;
+	if (absoluteIndex >= m_valueStack.size())
+	{
+		throw std::out_of_range("Local index out of bounds");
+	}
+	return m_valueStack[absoluteIndex];
 }
 
 void* ExecutionContext::Allocate(const size_t size)
@@ -203,6 +248,7 @@ void* ExecutionContext::Allocate(const size_t size)
 	auto block = std::make_unique<uint8_t[]>(size);
 	void* ptr = block.get();
 	m_memoryPool.push_back(std::move(block));
+
 	return ptr;
 }
 
@@ -224,25 +270,11 @@ void ExecutionContext::ClearError()
 	m_errorMessage.clear();
 }
 
-void ExecutionContext::Jump(const size_t targetIp)
-{
-	(void)targetIp;
-}
-
-void ExecutionContext::JumpIf(bool condition, const size_t targetIp)
-{
-	if (!condition)
-	{
-		Jump(targetIp);
-	}
-}
-
 void ExecutionContext::PrintStack() const
 {
 	std::cout << "=== Stack Trace ===\n";
 	std::cout << "Value stack size: " << m_valueStack.size() << "\n";
-	std::cout << "Call frames: " << m_callStack.size() << "\n";
-
+	std::cout << "Call frames depth: " << m_frames.size() << "\n";
 	if (!m_errorMessage.empty())
 	{
 		std::cout << "Error: " << m_errorMessage << "\n";

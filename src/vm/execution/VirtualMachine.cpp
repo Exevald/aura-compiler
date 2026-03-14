@@ -1,6 +1,5 @@
 #include "VirtualMachine.h"
 
-#include <format>
 #include <iostream>
 
 namespace VM::Execution
@@ -8,33 +7,29 @@ namespace VM::Execution
 
 VirtualMachine::VirtualMachine() = default;
 
-bool VirtualMachine::Interpret(Chunk* chunk)
+bool VirtualMachine::Interpret(const Chunk* chunk)
 {
 	if (!chunk)
 	{
-		std::cerr << "Error: null chunk passed to Interpret\n";
 		return false;
 	}
 
-	m_currentChunk = chunk;
 	m_context.ClearStack();
 	m_context.ClearError();
-	m_ip = 0;
 	m_stepsExecuted = 0;
 
-	if (const auto result = Run(); result != ExecutionResult::Success)
+	auto topLevel = std::make_shared<Core::Function>();
+	topLevel->name = "top_level";
+	topLevel->chunk->code = chunk->code;
+	topLevel->chunk->constants = chunk->constants;
+
+	m_context.PushValue(topLevel);
+	m_context.PushFrame(topLevel, 1);
+
+	if (Run() != ExecutionResult::Success)
 	{
-		if (m_context.HasError())
-		{
-			std::cerr << "VM Error: " << m_context.GetError() << "\n";
-		}
-		else
-		{
-			std::cerr << "VM Execution failed\n";
-		}
 		return false;
 	}
-
 	return true;
 }
 
@@ -47,64 +42,78 @@ ExecutionResult VirtualMachine::Run()
 {
 	for (;;)
 	{
-		if (++m_stepsExecuted > m_maxSteps)
+		try
 		{
-			return ExecutionResult::Timeout;
+			if (!m_context.HasFrames())
+			{
+				return ExecutionResult::Success;
+			}
+
+			CallFrame& frame = m_context.CurrentFrame();
+
+			if (frame.ip >= frame.function->chunk->GetCodeSize())
+			{
+				Core::Instruction implicitReturn(Core::OpCode::OP_RETURN, 0);
+				Dispatch(implicitReturn);
+				if (!m_context.HasFrames())
+				{
+					return ExecutionResult::Success;
+				}
+				continue;
+			}
+
+			uint8_t byte = frame.function->chunk->GetCode()[frame.ip++];
+			const auto opcode = static_cast<Core::OpCode>(byte);
+			uint8_t operand = 0;
+			if (Core::OpCodeHasOperand(opcode))
+			{
+				if (frame.ip < frame.function->chunk->GetCodeSize())
+				{
+					operand = frame.function->chunk->GetCode()[frame.ip++];
+				}
+			}
+
+			Core::Instruction instr(opcode, operand);
+			if (++m_stepsExecuted > m_maxSteps)
+			{
+				return ExecutionResult::Timeout;
+			}
+			if (m_debugMode)
+			{
+				DebugPrintInstruction(instr);
+			}
+
+			const int result = Dispatch(instr);
+
+			if (result < 0)
+			{
+				return ExecutionResult::RuntimeError;
+			}
+
+			if (!m_context.HasFrames())
+			{
+				return ExecutionResult::Success;
+			}
+
+			if (result > 0)
+			{
+				m_context.CurrentFrame().ip = static_cast<size_t>(result - 1);
+			}
 		}
-
-		if (m_ip >= m_currentChunk->GetCodeSize())
+		catch (const std::exception& e)
 		{
-			return ExecutionResult::Success;
-		}
-
-		Core::Instruction instr = DecodeInstruction();
-
-		if (m_debugMode)
-		{
-			DebugPrintInstruction(instr);
-		}
-
-		const int result = Dispatch(instr);
-
-		if (result < 0)
-		{
+			m_context.RaiseError(e.what());
 			return ExecutionResult::RuntimeError;
 		}
-
-		if (result > 0)
-		{
-			m_ip = static_cast<size_t>(result - 1);
-		}
-
-		if (instr.opcode == Core::OpCode::OP_RETURN)
-		{
-			return ExecutionResult::Success;
-		}
 	}
-}
-
-Core::Instruction VirtualMachine::DecodeInstruction()
-{
-	if (m_ip >= m_currentChunk->GetCodeSize())
-	{
-		return Core::Instruction{ Core::OpCode::OP_RETURN, 0 };
-	}
-
-	uint8_t opcode_byte = m_currentChunk->GetCode()[m_ip++];
-	auto opcode = static_cast<Core::OpCode>(opcode_byte);
-
-	uint8_t operand = 0;
-	if (OpCodeHasOperand(opcode) && m_ip < m_currentChunk->GetCodeSize())
-	{
-		operand = m_currentChunk->GetCode()[m_ip++];
-	}
-
-	return Core::Instruction{ opcode, operand };
 }
 
 int VirtualMachine::Dispatch(const Core::Instruction& instr)
 {
 	using enum Core::OpCode;
+
+	CallFrame& frame = m_context.CurrentFrame();
+	auto& constants = frame.function->chunk->constants;
 
 	if (auto it = m_extensions.find(instr.opcode); it != m_extensions.end())
 	{
@@ -113,116 +122,91 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 
 	switch (instr.opcode)
 	{
-	case OP_RETURN: {
-		if (!m_context.StackEmpty())
+	case OP_CALL: {
+		int argCount = instr.operand;
+		size_t calleeIdx = m_context.StackSize() - argCount - 1;
+		Core::Value callee = m_context.GetAt(calleeIdx);
+
+		if (!std::holds_alternative<Core::FunctionPtr>(callee))
 		{
-			Core::Value result = m_context.PopValue();
+			m_context.RaiseError("Can only call functions");
+			return -1;
+		}
+
+		auto func = std::get<Core::FunctionPtr>(callee);
+		if (argCount != func->arity)
+		{
+			m_context.RaiseError("Expected " + std::to_string(func->arity) + " args");
+			return -1;
+		}
+
+		size_t newBase = m_context.StackSize() - argCount;
+		m_context.PushFrame(func, newBase);
+		return 0;
+	}
+
+	case OP_RETURN: {
+		Core::Value result = std::monostate{};
+		if (m_context.StackSize() > frame.stackBase)
+		{
+			result = m_context.PopValue();
+		}
+
+		size_t funcSlot = frame.stackBase - 1;
+		m_context.PopFrame();
+
+		if (!m_context.HasFrames())
+		{
 			std::cout << "Result: ";
 			Core::ValueHelper::PrintValue(result, std::cout);
 			std::cout << "\n";
 		}
-		else
+
+		while (m_context.StackSize() > funcSlot)
 		{
-			std::cout << "Result: null\n";
+			m_context.PopValue();
 		}
+
+		m_context.PushValue(result);
 		return 0;
 	}
 
-	case OP_CONSTANT: {
-		if (instr.operand >= m_currentChunk->GetConstants().size())
+	case OP_CONSTANT:
+		if (instr.operand >= constants.size())
 		{
-			m_context.RaiseError("Constant index " + std::to_string(instr.operand) + " out of bounds");
+			m_context.RaiseError("Constant index out of bounds");
 			return -1;
 		}
-		m_context.PushValue(m_currentChunk->GetConstants()[instr.operand]);
+		m_context.PushValue(constants[instr.operand]);
 		return 0;
-	}
 
-	case OP_NEGATE: {
-		if (m_context.StackEmpty())
-		{
-			m_context.RaiseError("Stack underflow in OP_NEGATE");
-			return -1;
-		}
-		Core::Value operand = m_context.PopValue();
-		m_context.PushValue(Core::ValueHelper::Negate(operand));
+	case OP_GET_LOCAL:
+		m_context.PushValue(m_context.GetLocal(instr.operand));
 		return 0;
-	}
 
-	case OP_ADD: {
-		if (m_context.StackSize() < 2)
-		{
-			m_context.RaiseError("Stack underflow in OP_ADD");
-			return -1;
-		}
-		auto b = m_context.PopValue();
-		auto a = m_context.PopValue();
-
-		if (Core::ValueHelper::IsString(a) || Core::ValueHelper::IsString(b))
-		{
-			std::string concatenated = Core::ValueHelper::ToString(a) + Core::ValueHelper::ToString(b);
-			m_context.PushValue(m_stringPool.Intern(concatenated));
-		}
-		else
-		{
-			m_context.PushValue(Core::ValueHelper::Add(a, b));
-		}
+	case OP_SET_LOCAL:
+		m_context.SetLocal(instr.operand, m_context.PeekValue(0));
 		return 0;
-	}
-
-	case OP_SUBTRACT:
-	case OP_MULTIPLY:
-	case OP_DIVIDE: {
-		if (m_context.StackSize() < 2)
-		{
-			m_context.RaiseError("Stack underflow in binary operation");
-			return -1;
-		}
-		Core::Value b = m_context.PopValue();
-		Core::Value a = m_context.PopValue();
-
-		try
-		{
-			if (instr.opcode == OP_SUBTRACT)
-				m_context.PushValue(Core::ValueHelper::Subtract(a, b));
-			else if (instr.opcode == OP_MULTIPLY)
-				m_context.PushValue(Core::ValueHelper::Multiply(a, b));
-			else
-				m_context.PushValue(Core::ValueHelper::Divide(a, b));
-		}
-		catch (const std::runtime_error& e)
-		{
-			m_context.RaiseError(e.what());
-			return -1;
-		}
-		return 0;
-	}
 
 	case OP_DEFINE_GLOBAL: {
-		if (instr.operand >= m_currentChunk->GetConstants().size())
+		if (instr.operand >= constants.size())
 		{
-			m_context.RaiseError("Global name index out of bounds");
+			m_context.RaiseError("Constant index out of bounds");
 			return -1;
 		}
-		if (m_context.StackEmpty())
-		{
-			m_context.RaiseError("Stack underflow in OP_DEFINE_GLOBAL");
-			return -1;
-		}
-		std::string name = Core::ValueHelper::ToString(m_currentChunk->GetConstants()[instr.operand]);
+		std::string name = Core::ValueHelper::ToString(constants[instr.operand]);
 		m_context.DefineGlobal(name, m_context.PopValue());
 		return 0;
 	}
 
 	case OP_GET_GLOBAL:
 	case OP_SET_GLOBAL: {
-		if (instr.operand >= m_currentChunk->GetConstants().size())
+		if (instr.operand >= constants.size())
 		{
-			m_context.RaiseError("Global index out of bounds");
+			m_context.RaiseError("Constant index out of bounds");
 			return -1;
 		}
-		std::string name = Core::ValueHelper::ToString(m_currentChunk->GetConstants()[instr.operand]);
-
+		std::string name = Core::ValueHelper::ToString(constants[instr.operand]);
 		if (instr.opcode == OP_GET_GLOBAL)
 		{
 			Core::Value val;
@@ -235,11 +219,6 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		}
 		else
 		{
-			if (m_context.StackEmpty())
-			{
-				m_context.RaiseError("Stack underflow in OP_SET_GLOBAL");
-				return -1;
-			}
 			if (!m_context.SetGlobal(name, m_context.PeekValue(0)))
 			{
 				m_context.RaiseError("Undefined variable: " + name);
@@ -249,37 +228,48 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		return 0;
 	}
 
-	case OP_GET_LOCAL: {
-		if (instr.operand >= m_context.StackSize())
+	case OP_ADD: {
+		auto b = m_context.PopValue();
+		if (auto a = m_context.PopValue();
+			Core::ValueHelper::IsString(a) || Core::ValueHelper::IsString(b))
 		{
-			m_context.RaiseError("Local variable index " + std::to_string(instr.operand) + " out of bounds");
-			return -1;
+			m_context.PushValue(
+				m_stringPool.Intern(
+					Core::ValueHelper::ToString(a) + Core::ValueHelper::ToString(b)));
 		}
-		m_context.PushValue(m_context.GetAt(instr.operand));
+		else
+		{
+			m_context.PushValue(Core::ValueHelper::Add(a, b));
+		}
 		return 0;
 	}
 
-	case OP_SET_LOCAL: {
-		if (instr.operand >= m_context.StackSize())
+	case OP_SUBTRACT:
+	case OP_MULTIPLY:
+	case OP_DIVIDE: {
+		auto b = m_context.PopValue();
+		auto a = m_context.PopValue();
+		if (instr.opcode == OP_SUBTRACT)
 		{
-			m_context.RaiseError("Local assignment index " + std::to_string(instr.operand) + " out of bounds");
-			return -1;
+			m_context.PushValue(Core::ValueHelper::Subtract(a, b));
 		}
-		if (m_context.StackEmpty())
+		else if (instr.opcode == OP_MULTIPLY)
 		{
-			m_context.RaiseError("Stack underflow in OP_SET_LOCAL");
-			return -1;
+			m_context.PushValue(Core::ValueHelper::Multiply(a, b));
 		}
-		m_context.SetAt(instr.operand, m_context.PeekValue(0));
+		else
+		{
+			m_context.PushValue(Core::ValueHelper::Divide(a, b));
+		}
+		return 0;
+	}
+
+	case OP_NEGATE: {
+		m_context.PushValue(Core::ValueHelper::Negate(m_context.PopValue()));
 		return 0;
 	}
 
 	case OP_JUMP_IF_FALSE: {
-		if (m_context.StackEmpty())
-		{
-			m_context.RaiseError("Stack underflow in OP_JUMP_IF_FALSE");
-			return -1;
-		}
 		if (!Core::ValueHelper::As<bool>(m_context.PopValue()))
 		{
 			return static_cast<int>(instr.operand) + 1;
@@ -287,8 +277,9 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		return 0;
 	}
 
-	case OP_JUMP:
+	case OP_JUMP: {
 		return static_cast<int>(instr.operand) + 1;
+	}
 
 	default:
 		m_context.RaiseError("Unknown opcode: " + std::to_string(static_cast<uint8_t>(instr.opcode)));
@@ -298,17 +289,24 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 
 void VirtualMachine::DebugPrintInstruction(const Core::Instruction& instr) const
 {
-	std::cout << "["
-			  << (m_ip - 1)
-			  << "] "
-			  << Core::GetOpCodeName(instr.opcode)
-			  << " ";
+	if (!m_context.HasFrames())
+	{
+		return;
+	}
 
-	if (instr.operand != 0)
+	std::cout << "[" << (m_context.CurrentFrame().ip - 1) << "] "
+			  << Core::GetOpCodeName(instr.opcode) << " ";
+
+	if (Core::OpCodeHasOperand(instr.opcode))
 	{
 		std::cout << "arg=" << static_cast<int>(instr.operand);
 	}
 	std::cout << "\n";
+}
+
+Core::Instruction VirtualMachine::DecodeInstruction()
+{
+	return Core::Instruction(Core::OpCode::OP_RETURN);
 }
 
 } // namespace VM::Execution

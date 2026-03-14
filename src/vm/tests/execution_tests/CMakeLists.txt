@@ -5,6 +5,7 @@ add_executable(
         Chunk_tests.cpp
         ExecutionContext_tests.cpp
         VirtualMachine_tests.cpp
+        Function_tests.cpp
 )
 
 target_include_directories(execution_tests PRIVATE

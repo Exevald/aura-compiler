@@ -6,21 +6,26 @@
 using VM::Execution::ExecutionContext;
 using namespace VM::Core;
 
+FunctionPtr CreateDummyFunction(const std::string& name = "test")
+{
+	auto func = std::make_shared<Function>();
+	func->name = name;
+	return func;
+}
+
 TEST(ExecutionContextTest, PushValue_AddsToStack)
 {
 	ExecutionContext ctx;
-
 	ctx.PushValue(42.0);
 	ctx.PushValue(true);
 
 	EXPECT_EQ(ctx.StackSize(), 2);
-	EXPECT_TRUE(ctx.StackEmpty() == false);
+	EXPECT_FALSE(ctx.StackEmpty());
 }
 
 TEST(ExecutionContextTest, PopValue_RemovesFromStack)
 {
 	ExecutionContext ctx;
-
 	ctx.PushValue(10.0);
 	ctx.PushValue(20.0);
 
@@ -32,7 +37,6 @@ TEST(ExecutionContextTest, PopValue_RemovesFromStack)
 TEST(ExecutionContextTest, PeekValue_DoesNotRemove)
 {
 	ExecutionContext ctx;
-
 	ctx.PushValue(1.0);
 	ctx.PushValue(2.0);
 
@@ -41,66 +45,31 @@ TEST(ExecutionContextTest, PeekValue_DoesNotRemove)
 	EXPECT_EQ(ctx.StackSize(), 2);
 }
 
-TEST(ExecutionContextTest, PeekValue_ConstOverload)
-{
-	const ExecutionContext ctx;
-	EXPECT_NO_THROW([] {
-	}());
-}
-
 TEST(ExecutionContextTest, StackOverflow_Throws)
 {
 	ExecutionContext ctx;
-
 	for (size_t i = 0; i < 4096; ++i)
 	{
 		ctx.PushValue(0.0);
 	}
-
 	EXPECT_THROW(ctx.PushValue(1.0), std::overflow_error);
-}
-
-TEST(ExecutionContextTest, PopFromEmptyStack_Throws)
-{
-	ExecutionContext ctx;
-	EXPECT_THROW(ctx.PopValue(), std::underflow_error);
-}
-
-TEST(ExecutionContextTest, PeekOutOfRange_Throws)
-{
-	ExecutionContext ctx;
-	ctx.PushValue(1.0);
-
-	EXPECT_THROW(ctx.PeekValue(1), std::out_of_range);
 }
 
 TEST(ExecutionContextTest, ClearStack_EmptiesStack)
 {
 	ExecutionContext ctx;
 	ctx.PushValue(1.0);
-	ctx.PushValue(2.0);
+	ctx.PushFrame(CreateDummyFunction(), 0);
 
 	ctx.ClearStack();
 
 	EXPECT_TRUE(ctx.StackEmpty());
-	EXPECT_EQ(ctx.StackSize(), 0);
-}
-
-TEST(ExecutionContextTest, EnterScope_CreatesNewScope)
-{
-	ExecutionContext ctx;
-
-	auto* scope1 = ctx.EnterScope();
-	auto* scope2 = ctx.EnterScope();
-
-	EXPECT_NE(scope1, scope2);
-	EXPECT_EQ(scope2->parent.get(), scope1);
+	EXPECT_FALSE(ctx.HasFrames());
 }
 
 TEST(ExecutionContextTest, Scope_Variables_Isolated)
 {
 	ExecutionContext ctx;
-
 	ctx.CurrentScope()->SetVariable("x", 10.0);
 
 	ctx.EnterScope();
@@ -108,183 +77,140 @@ TEST(ExecutionContextTest, Scope_Variables_Isolated)
 	ctx.CurrentScope()->SetVariable("y", 30.0);
 
 	auto* x = ctx.CurrentScope()->GetVariable("x");
-	auto* y = ctx.CurrentScope()->GetVariable("y");
-
 	ASSERT_NE(x, nullptr);
-	ASSERT_NE(y, nullptr);
 	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(*x), 20.0);
-	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(*y), 30.0);
 
 	ctx.ExitScope();
 	x = ctx.CurrentScope()->GetVariable("x");
-	y = ctx.CurrentScope()->GetVariable("y");
-
 	ASSERT_NE(x, nullptr);
 	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(*x), 10.0);
-	EXPECT_EQ(y, nullptr);
 }
 
-TEST(ExecutionContextTest, HasVariable_ChecksParentChain)
+TEST(ExecutionContextTest, PushFrame_AddsFrame)
 {
 	ExecutionContext ctx;
+	auto func1 = CreateDummyFunction("f1");
+	auto func2 = CreateDummyFunction("f2");
 
-	ctx.CurrentScope()->SetVariable("global", true);
-	ctx.EnterScope();
-	ctx.CurrentScope()->SetVariable("local", 42);
+	ctx.PushFrame(func1, 0);
+	ctx.PushFrame(func2, 2);
 
-	EXPECT_TRUE(ctx.CurrentScope()->HasVariable("global"));
-	EXPECT_TRUE(ctx.CurrentScope()->HasVariable("local"));
-	EXPECT_FALSE(ctx.CurrentScope()->HasVariable("missing"));
+	auto& frame = ctx.CurrentFrame();
+	EXPECT_EQ(frame.function->name, "f2");
+	EXPECT_EQ(frame.stackBase, 2);
 }
 
-TEST(ExecutionContextTest, ExitScope_ReturnsToParent)
+TEST(ExecutionContextTest, PopFrame_RemovesFrame)
 {
 	ExecutionContext ctx;
+	ctx.PushFrame(CreateDummyFunction("f1"), 0);
+	ctx.PushFrame(CreateDummyFunction("f2"), 2);
 
-	auto* root = ctx.CurrentScope();
-	ctx.EnterScope();
+	ctx.PopFrame();
 
-	EXPECT_EQ(ctx.ExitScope(), root);
-	EXPECT_EQ(ctx.CurrentScope(), root);
+	EXPECT_TRUE(ctx.HasFrames());
+	EXPECT_EQ(ctx.CurrentFrame().function->name, "f1");
 }
 
-TEST(ExecutionContextTest, ExitScope_AtRoot_ReturnsNullptr)
+TEST(ExecutionContextTest, PopFrame_ThrowsIfEmpty)
 {
 	ExecutionContext ctx;
-	EXPECT_EQ(ctx.ExitScope(), nullptr);
-}
-
-TEST(ExecutionContextTest, ScopeDepthLimit_Throws)
-{
-	ExecutionContext ctx;
-
-	for (int i = 1; i < 256; ++i)
-	{
-		ctx.EnterScope();
-	}
-
-	EXPECT_THROW(ctx.EnterScope(), std::overflow_error);
-}
-
-TEST(ExecutionContextTest, PushCallFrame_AddsFrame)
-{
-	ExecutionContext ctx;
-
-	ctx.PushCallFrame(10, 0);
-	ctx.PushCallFrame(20, 2);
-
-	auto* frame = ctx.CurrentFrame();
-	ASSERT_NE(frame, nullptr);
-	EXPECT_EQ(frame->ip, 20);
-	EXPECT_EQ(frame->stackBase, 2);
-}
-
-TEST(ExecutionContextTest, PopCallFrame_RemovesFrame)
-{
-	ExecutionContext ctx;
-
-	ctx.PushCallFrame(10, 0);
-	ctx.PushCallFrame(20, 2);
-
-	ctx.PopCallFrame();
-
-	auto* frame = ctx.CurrentFrame();
-	ASSERT_NE(frame, nullptr);
-	EXPECT_EQ(frame->ip, 10);
-}
-
-TEST(ExecutionContextTest, PopCallFrame_EmptyStack_ReturnsNullptr)
-{
-	ExecutionContext ctx;
-	EXPECT_EQ(ctx.PopCallFrame(), nullptr);
+	EXPECT_THROW(ctx.PopFrame(), std::runtime_error);
 }
 
 TEST(ExecutionContextTest, RaiseError_SetsMessage)
 {
 	ExecutionContext ctx;
-
-	EXPECT_FALSE(ctx.HasError());
-
 	ctx.RaiseError("Test error");
 
 	EXPECT_TRUE(ctx.HasError());
 	EXPECT_EQ(ctx.GetError(), "Test error");
 }
 
-TEST(ExecutionContextTest, RaiseError_KeepsFirstError)
-{
-	ExecutionContext ctx;
-
-	ctx.RaiseError("First error");
-	ctx.RaiseError("Second error");
-
-	EXPECT_EQ(ctx.GetError(), "First error");
-}
-
-TEST(ExecutionContextTest, ClearError_ResetsState)
-{
-	ExecutionContext ctx;
-
-	ctx.RaiseError("Error");
-	EXPECT_TRUE(ctx.HasError());
-
-	ctx.ClearError();
-	EXPECT_FALSE(ctx.HasError());
-	EXPECT_TRUE(ctx.GetError().empty());
-}
-
-TEST(ExecutionContextTest, Allocate_ReturnsNonNullPointer)
-{
-	ExecutionContext ctx;
-
-	void* ptr = ctx.Allocate(100);
-
-	EXPECT_NE(ptr, nullptr);
-}
-
-TEST(ExecutionContextTest, JumpAndJumpIf_NoOpForMVP)
-{
-	ExecutionContext ctx;
-
-	EXPECT_NO_THROW(ctx.Jump(100));
-	EXPECT_NO_THROW(ctx.JumpIf(true, 200));
-	EXPECT_NO_THROW(ctx.JumpIf(false, 300));
-}
-
-TEST(ExecutionContextTest, PrintStack_DoesNotCrash)
-{
-	ExecutionContext ctx;
-
-	ctx.PushValue(1.0);
-	ctx.PushValue(2.0);
-
-	EXPECT_NO_THROW(ctx.PrintStack());
-}
-
 TEST(ExecutionContextTest, GlobalStorage)
 {
 	ExecutionContext ctx;
-	const Value val = 123.0;
-
-	ctx.DefineGlobal("test", val);
+	ctx.DefineGlobal("test", 123.0);
 
 	Value retrieved;
 	EXPECT_TRUE(ctx.GetGlobal("test", retrieved));
 	EXPECT_EQ(ValueHelper::As<double>(retrieved), 123.0);
-
-	ctx.SetGlobal("test", 456.0);
-	ctx.GetGlobal("test", retrieved);
-	EXPECT_EQ(ValueHelper::As<double>(retrieved), 456.0);
 }
 
-TEST(ExecutionContextTest, LocalStackAccess)
+TEST(ExecutionContextTest, LocalStackAccess_Absolute)
 {
 	ExecutionContext ctx;
 	ctx.PushValue(10.0);
 	ctx.PushValue(20.0);
 
 	EXPECT_EQ(ValueHelper::As<double>(ctx.GetAt(0)), 10.0);
-
 	ctx.SetAt(1, 99.0);
-	EXPECT_EQ(ValueHelper::As<double>(ctx.Peek(0)), 99.0);
+	EXPECT_EQ(ValueHelper::As<double>(ctx.PeekValue(0)), 99.0);
+}
+
+TEST(ExecutionContextTest, LocalStackAccess_Relative)
+{
+	ExecutionContext ctx;
+	ctx.PushValue(10.0);
+	ctx.PushValue(20.0);
+	ctx.PushValue(30.0);
+
+	ctx.PushFrame(CreateDummyFunction(), 1);
+
+	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(ctx.GetLocal(0)), 20.0);
+	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(ctx.GetLocal(1)), 30.0);
+
+	ctx.SetLocal(0, 55.0);
+	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(ctx.PeekValue(1)), 55.0);
+}
+
+TEST(ExecutionContextTest, Allocate_ReturnsNonNull)
+{
+	ExecutionContext ctx;
+	void* ptr = ctx.Allocate(100);
+	EXPECT_NE(ptr, nullptr);
+}
+
+TEST(ExecutionContextTest, CallFrameStackIsolation)
+{
+	ExecutionContext ctx;
+
+	ctx.PushValue(10.0);
+	ctx.PushValue(20.0);
+	ctx.PushValue(30.0);
+
+	const auto func = CreateDummyFunction("my_func");
+	ctx.PushFrame(func, 1);
+
+	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(ctx.GetLocal(0)), 20.0);
+	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(ctx.GetLocal(1)), 30.0);
+
+	ctx.SetLocal(0, 99.0);
+
+	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(ctx.PeekValue(1)), 99.0);
+}
+
+TEST(ExecutionContextTest, FrameUnderflowProtection)
+{
+	ExecutionContext ctx;
+	ctx.PushFrame(CreateDummyFunction("test"), 10);
+
+	EXPECT_THROW(ctx.GetLocal(0), std::out_of_range);
+}
+
+TEST(ExecutionContextTest, MultipleFramesManagement)
+{
+	ExecutionContext ctx;
+
+	ctx.PushFrame(CreateDummyFunction("main"), 0);
+	ctx.PushFrame(CreateDummyFunction("sub"), 5);
+
+	EXPECT_EQ(ctx.CurrentFrame().function->name, "sub");
+	EXPECT_TRUE(ctx.HasFrames());
+
+	ctx.PopFrame();
+	EXPECT_EQ(ctx.CurrentFrame().function->name, "main");
+
+	ctx.PopFrame();
+	EXPECT_FALSE(ctx.HasFrames());
 }

@@ -25,6 +25,8 @@ enum class OpCode : uint8_t
 
 	OP_JUMP = 0x10,
 	OP_JUMP_IF_FALSE = 0x11,
+
+	OP_CALL = 0x30,
 };
 
 constexpr std::string_view GetOpCodeName(const OpCode opcode) noexcept
@@ -77,6 +79,7 @@ constexpr bool OpCodeHasOperand(const OpCode opcode)
 	case OP_SET_GLOBAL:
 	case OP_GET_LOCAL:
 	case OP_SET_LOCAL:
+	case OP_CALL:
 		return true;
 	default:
 		return false;

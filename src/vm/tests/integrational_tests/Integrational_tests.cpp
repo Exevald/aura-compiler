@@ -177,3 +177,71 @@ TEST(IntegrationTest, BooleanComparisonInExpression)
 	VirtualMachine vm;
 	EXPECT_TRUE(vm.Interpret(&chunk));
 }
+
+TEST(IntegrationTest, GlobalVariablesInsideFunctionWrapper)
+{
+	VirtualMachine vm;
+	Chunk chunk;
+
+	const uint8_t nameIdx = chunk.AddConstant(std::make_shared<const std::string>("my_global"));
+
+	chunk.WriteConstant(100.0);
+	chunk.Write(OP_DEFINE_GLOBAL);
+	chunk.code.push_back(nameIdx);
+
+	chunk.Write(OP_GET_GLOBAL);
+	chunk.code.push_back(nameIdx);
+	chunk.Write(OP_RETURN);
+
+	std::ostringstream oss;
+	std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
+	vm.Interpret(&chunk);
+	std::cout.rdbuf(old);
+
+	EXPECT_THAT(oss.str(), ::testing::HasSubstr("Result: 100"));
+}
+
+TEST(IntegrationTest, LocalVariablesWithRelativeAddressing)
+{
+	VirtualMachine vm;
+	Chunk chunk;
+
+	chunk.WriteConstant(10.0);
+	chunk.WriteConstant(20.0);
+
+	chunk.Write(OP_GET_LOCAL);
+	chunk.code.push_back(0);
+	chunk.Write(OP_GET_LOCAL);
+	chunk.code.push_back(1);
+	chunk.Write(OP_ADD);
+	chunk.Write(OP_RETURN);
+
+	const std::ostringstream oss;
+	std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
+	vm.Interpret(&chunk);
+	std::cout.rdbuf(old);
+
+	EXPECT_THAT(oss.str(), ::testing::HasSubstr("Result: 30"));
+}
+
+TEST(IntegrationTest, SetLocalModifiesStack)
+{
+	VirtualMachine vm;
+	Chunk chunk;
+
+	chunk.WriteConstant(0.0);
+	chunk.WriteConstant(50.0);
+	chunk.Write(OP_SET_LOCAL);
+	chunk.code.push_back(0);
+
+	chunk.Write(OP_GET_LOCAL);
+	chunk.code.push_back(0);
+	chunk.Write(OP_RETURN);
+
+	const std::ostringstream oss;
+	std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
+	vm.Interpret(&chunk);
+	std::cout.rdbuf(old);
+
+	EXPECT_THAT(oss.str(), ::testing::HasSubstr("Result: 50"));
+}

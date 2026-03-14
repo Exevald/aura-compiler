@@ -1,10 +1,18 @@
 #include "Value.h"
+#include "../execution/Chunk.h"
 
 #include <sstream>
 #include <stdexcept>
 
 namespace VM::Core
 {
+
+Function::Function()
+	: chunk(std::make_unique<Execution::Chunk>())
+{
+}
+
+Function::~Function() = default;
 
 Value ValueHelper::PerformUnaryLogic(const Value& val)
 {
@@ -35,6 +43,10 @@ std::string_view ValueHelper::GetTypeName(const Value& val) noexcept
 		{
 			return "string";
 		}
+		else if constexpr (std::is_same_v<T, FunctionPtr>)
+		{
+			return "function";
+		}
 		else
 		{
 			return "unknown";
@@ -49,14 +61,11 @@ void ValueHelper::PrintValue(const Value& val, std::ostream& out)
 		using T = std::decay_t<T0>;
 		if constexpr (std::is_same_v<T, StringPtr>)
 		{
-			if (v)
-			{
-				out << *v;
-			}
-			else
-			{
-				out << "null";
-			}
+			out << (v ? *v : "null");
+		}
+		else if constexpr (std::is_same_v<T, FunctionPtr>)
+		{
+			out << "<fn " << (v ? v->name : "anonymous") << ">";
 		}
 		else if constexpr (std::is_same_v<T, std::monostate>)
 		{

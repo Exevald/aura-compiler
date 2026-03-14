@@ -1,16 +1,46 @@
 #pragma once
 
+#pragma once
+
 #include <concepts>
 #include <functional>
 #include <memory>
 #include <string>
 #include <variant>
 
+namespace VM::Execution
+{
+struct Chunk;
+}
+
 namespace VM::Core
 {
 
+struct Function;
+using FunctionPtr = std::shared_ptr<Function>;
+
 using StringPtr = std::shared_ptr<const std::string>;
-using Value = std::variant<std::monostate, bool, int64_t, double, StringPtr>;
+
+using Value = std::variant<
+	std::monostate,
+	bool,
+	int64_t,
+	double,
+	StringPtr,
+	FunctionPtr>;
+
+struct Function
+{
+	std::string name;
+	std::unique_ptr<Execution::Chunk> chunk;
+	int arity = 0;
+
+	Function();
+	~Function();
+};
+
+using StringPtr = std::shared_ptr<const std::string>;
+using Value = std::variant<std::monostate, bool, int64_t, double, StringPtr, FunctionPtr>;
 
 template <typename T>
 concept PrimitiveValue = std::is_same_v<T, bool> || std::is_same_v<T, int64_t> || std::is_same_v<T, double>;
