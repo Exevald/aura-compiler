@@ -300,3 +300,35 @@ TEST(ValueTest, StringAsBool)
 	Value n = std::monostate{};
 	EXPECT_THROW(ValueHelper::As<StringPtr>(n), std::bad_variant_access);
 }
+
+TEST(ValueTest, EqualityDeepCheck)
+{
+	StringPool pool;
+	Value s1 = pool.Intern("apple");
+	Value s2 = std::make_shared<const std::string>("apple");
+	Value s3 = pool.Intern("orange");
+
+	EXPECT_TRUE(ValueHelper::Equal(s1, s2));
+	EXPECT_FALSE(ValueHelper::Equal(s1, s3));
+
+	EXPECT_TRUE(ValueHelper::Equal(int64_t{ 42 }, 42.0));
+	EXPECT_TRUE(ValueHelper::Equal(42.0, int64_t{ 42 }));
+	EXPECT_FALSE(ValueHelper::Equal(int64_t{ 42 }, 42.1));
+
+	EXPECT_FALSE(ValueHelper::Equal(42.0, s1));
+	EXPECT_TRUE(ValueHelper::Equal(true, 1));
+}
+
+TEST(ValueTest, NumericComparisons)
+{
+	Value low = 10.0;
+	Value high = 20.0;
+	Value loInt = int64_t{ 10 };
+
+	EXPECT_TRUE(ValueHelper::As<bool>(ValueHelper::Less(low, high)));
+	EXPECT_TRUE(ValueHelper::As<bool>(ValueHelper::Less(loInt, high)));
+	EXPECT_FALSE(ValueHelper::As<bool>(ValueHelper::Less(high, low)));
+
+	EXPECT_TRUE(ValueHelper::As<bool>(ValueHelper::Greater(high, low)));
+	EXPECT_FALSE(ValueHelper::As<bool>(ValueHelper::Greater(low, high)));
+}

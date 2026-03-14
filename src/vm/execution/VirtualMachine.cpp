@@ -5,6 +5,8 @@
 namespace VM::Execution
 {
 
+using Core::Value;
+
 VirtualMachine::VirtualMachine() = default;
 
 bool VirtualMachine::Interpret(const Chunk* chunk)
@@ -87,6 +89,10 @@ ExecutionResult VirtualMachine::Run()
 
 			if (result < 0)
 			{
+				if (!m_context.HasError())
+				{
+					return ExecutionResult::RuntimeError;
+				}
 				return ExecutionResult::RuntimeError;
 			}
 
@@ -95,9 +101,15 @@ ExecutionResult VirtualMachine::Run()
 				return ExecutionResult::Success;
 			}
 
+			if (result != 0)
+			{
+				auto& currentIp = m_context.CurrentFrame().ip;
+				currentIp = static_cast<int>(currentIp) + result;
+			}
+
 			if (result > 0)
 			{
-				m_context.CurrentFrame().ip = static_cast<size_t>(result - 1);
+				m_context.CurrentFrame().ip += static_cast<size_t>(result);
 			}
 		}
 		catch (const std::exception& e)
@@ -125,7 +137,7 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	case OP_CALL: {
 		int argCount = instr.operand;
 		size_t calleeIdx = m_context.StackSize() - argCount - 1;
-		Core::Value callee = m_context.GetAt(calleeIdx);
+		Value callee = m_context.GetAt(calleeIdx);
 
 		if (!std::holds_alternative<Core::FunctionPtr>(callee))
 		{
@@ -146,7 +158,7 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	}
 
 	case OP_RETURN: {
-		Core::Value result = std::monostate{};
+		Value result = std::monostate{};
 		if (m_context.StackSize() > frame.stackBase)
 		{
 			result = m_context.PopValue();
@@ -209,7 +221,7 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		std::string name = Core::ValueHelper::ToString(constants[instr.operand]);
 		if (instr.opcode == OP_GET_GLOBAL)
 		{
-			Core::Value val;
+			Value val;
 			if (!m_context.GetGlobal(name, val))
 			{
 				m_context.RaiseError("Undefined variable: " + name);
@@ -269,16 +281,93 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		return 0;
 	}
 
-	case OP_JUMP_IF_FALSE: {
-		if (!Core::ValueHelper::As<bool>(m_context.PopValue()))
+	case OP_AND: {
+		Value b = m_context.PopValue();
+		Value a = m_context.PopValue();
+		m_context.PushValue(Core::ValueHelper::PerformBinaryLogic(a, b, std::logical_and<bool>{}));
+		return 0;
+	}
+
+	case OP_OR: {
+		Value b = m_context.PopValue();
+		Value a = m_context.PopValue();
+		m_context.PushValue(Core::ValueHelper::PerformBinaryLogic(a, b, std::logical_or<bool>{}));
+		return 0;
+	}
+
+	case OP_EQUAL: {
+		Value b = m_context.PopValue();
+		Value a = m_context.PopValue();
+		m_context.PushValue(Core::ValueHelper::Equal(a, b));
+		return 0;
+	}
+
+	case OP_NOT_EQUAL: {
+		Value b = m_context.PopValue();
+		Value a = m_context.PopValue();
+		m_context.PushValue(!Core::ValueHelper::Equal(a, b));
+		return 0;
+	}
+
+	case OP_GREATER: {
+		Value b = m_context.PopValue();
+		Value a = m_context.PopValue();
+		m_context.PushValue(Core::ValueHelper::Greater(a, b));
+		return 0;
+	}
+
+	case OP_GREATER_EQUAL: {
+		Value b = m_context.PopValue();
+		Value a = m_context.PopValue();
+		bool isLess = std::get<bool>(Core::ValueHelper::Less(a, b));
+		m_context.PushValue(!isLess);
+		return 0;
+	}
+
+	case OP_LESS: {
+		Value b = m_context.PopValue();
+		Value a = m_context.PopValue();
+		m_context.PushValue(Core::ValueHelper::Less(a, b));
+		return 0;
+	}
+
+	case OP_LESS_EQUAL: {
+		Value b = m_context.PopValue();
+		Value a = m_context.PopValue();
+		bool isGreater = std::get<bool>(Core::ValueHelper::Greater(a, b));
+		m_context.PushValue(!isGreater);
+		return 0;
+	}
+
+	case OP_NOT: {
+		m_context.PushValue(Core::ValueHelper::PerformUnaryLogic(m_context.PopValue()));
+		return 0;
+	}
+
+	case OP_JUMP_IF_TRUE: {
+		if (Core::ValueHelper::As<bool>(m_context.PeekValue(0)))
 		{
-			return static_cast<int>(instr.operand) + 1;
+			return instr.operand;
 		}
+		m_context.PopValue();
+		return 0;
+	}
+
+	case OP_JUMP_IF_FALSE: {
+		if (!Core::ValueHelper::As<bool>(m_context.PeekValue(0)))
+		{
+			return instr.operand;
+		}
+		m_context.PopValue();
 		return 0;
 	}
 
 	case OP_JUMP: {
-		return static_cast<int>(instr.operand) + 1;
+		return instr.operand;
+	}
+
+	case OP_LOOP: {
+		return -static_cast<int>(instr.operand);
 	}
 
 	default:

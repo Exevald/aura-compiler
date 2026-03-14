@@ -125,4 +125,55 @@ Value ValueHelper::Negate(const Value& val)
 	return PerformUnaryArithmetic(val, [](double x) { return -x; });
 }
 
+bool ValueHelper::Equal(const Value& lhs, const Value& rhs)
+{
+	return std::visit([&]<typename T1, typename T2>(const T1& a, const T2& b) -> bool {
+		using Type1 = std::decay_t<T1>;
+		using Type2 = std::decay_t<T2>;
+
+		if constexpr (std::is_same_v<Type1, Type2>)
+		{
+			if constexpr (std::is_same_v<Type1, std::monostate>)
+			{
+				return true;
+			}
+
+			if constexpr (std::is_same_v<Type1, StringPtr>)
+			{
+				if (!a || !b)
+				{
+					return a == b;
+				}
+				return *a == *b;
+			}
+
+			if constexpr (std::is_same_v<Type1, FunctionPtr>)
+			{
+				return a == b;
+			}
+
+			return a == b;
+		}
+		else if constexpr (std::is_arithmetic_v<Type1> && std::is_arithmetic_v<Type2>)
+		{
+			return static_cast<double>(a) == static_cast<double>(b);
+		}
+		else
+		{
+			return false;
+		}
+	},
+		lhs, rhs);
+}
+
+Value ValueHelper::Greater(const Value& lhs, const Value& rhs)
+{
+	return PerformBinaryComparison(lhs, rhs, std::greater<double>{});
+}
+
+Value ValueHelper::Less(const Value& lhs, const Value& rhs)
+{
+	return PerformBinaryComparison(lhs, rhs, std::less<double>{});
+}
+
 } // namespace VM::Core

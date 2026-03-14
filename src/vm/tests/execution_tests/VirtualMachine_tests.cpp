@@ -212,11 +212,11 @@ TEST_F(VirtualMachineTest, JumpIfFalseTakesBranch)
 TEST_F(VirtualMachineTest, MaxStepsEnforcesTimeout)
 {
 	Chunk chunk;
-	chunk.Write(OP_JUMP);
-	chunk.code.push_back(0);
+	chunk.Write(OP_LOOP);
+	chunk.code.push_back(2);
 
-	vm.SetMaxSteps(10);
-	EXPECT_FALSE(vm.Interpret(&chunk));
+	vm.SetMaxSteps(100);
+	EXPECT_EQ(vm.Interpret(&chunk), false);
 }
 
 TEST_F(VirtualMachineTest, DebugModePrintsInstructions)
@@ -290,4 +290,37 @@ TEST_F(VirtualMachineTest, UnknownOpcodeErrorHandling)
 
 	EXPECT_FALSE(vm.Interpret(&chunk));
 	EXPECT_THAT(std::string(vm.GetContext().GetError()), ::testing::HasSubstr("Unknown opcode"));
+}
+
+TEST_F(VirtualMachineTest, ComparisonInstructions)
+{
+	Chunk chunk;
+	chunk.WriteConstant(10.0);
+	chunk.WriteConstant(20.0);
+	chunk.Write(OP_LESS);
+	chunk.Write(OP_RETURN);
+	EXPECT_THAT(RunAndCapture(chunk), ::testing::HasSubstr("Result: true"));
+
+	chunk.Clear();
+	chunk.WriteConstant(int64_t{ 10 });
+	chunk.WriteConstant(10.0);
+	chunk.Write(OP_EQUAL);
+	chunk.Write(OP_RETURN);
+	EXPECT_THAT(RunAndCapture(chunk), ::testing::HasSubstr("Result: true"));
+
+	chunk.Clear();
+	chunk.WriteConstant(true);
+	chunk.Write(OP_NOT);
+	chunk.Write(OP_RETURN);
+	EXPECT_THAT(RunAndCapture(chunk), ::testing::HasSubstr("Result: false"));
+}
+
+TEST_F(VirtualMachineTest, NotEqualInstruction)
+{
+	Chunk chunk;
+	chunk.WriteConstant(10.0);
+	chunk.WriteConstant(20.0);
+	chunk.Write(OP_NOT_EQUAL);
+	chunk.Write(OP_RETURN);
+	EXPECT_THAT(RunAndCapture(chunk), ::testing::HasSubstr("Result: true"));
 }

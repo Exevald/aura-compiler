@@ -97,6 +97,10 @@ public:
 	static Value Multiply(const Value& lhs, const Value& rhs);
 	static Value Divide(const Value& lhs, const Value& rhs);
 	static Value Negate(const Value& val);
+
+	static bool Equal(const Value& lhs, const Value& rhs);
+	static Value Greater(const Value& lhs, const Value& rhs);
+	static Value Less(const Value& lhs, const Value& rhs);
 };
 
 } // namespace VM::Core

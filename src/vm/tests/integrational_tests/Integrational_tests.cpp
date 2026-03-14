@@ -245,3 +245,132 @@ TEST(IntegrationTest, SetLocalModifiesStack)
 
 	EXPECT_THAT(oss.str(), ::testing::HasSubstr("Result: 50"));
 }
+
+TEST(IntegrationTest, IfConditionLogic)
+{
+	VirtualMachine vm;
+	Chunk chunk;
+
+	chunk.WriteConstant(10.0);
+	chunk.WriteConstant(5.0);
+	chunk.Write(OP_GREATER);
+
+	chunk.Write(OP_JUMP_IF_FALSE);
+	const size_t jumpPatch = chunk.code.size();
+	chunk.code.push_back(0);
+
+	chunk.WriteConstant(100.0);
+	chunk.Write(OP_JUMP);
+	const size_t exitJumpPatch = chunk.code.size();
+	chunk.code.push_back(0);
+
+	chunk.code[jumpPatch] = static_cast<uint8_t>(chunk.code.size() - jumpPatch);
+	chunk.WriteConstant(200.0);
+
+	chunk.code[exitJumpPatch] = static_cast<uint8_t>(chunk.code.size() - exitJumpPatch);
+	chunk.Write(OP_RETURN);
+
+	std::ostringstream oss;
+	std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
+	vm.Interpret(&chunk);
+	std::cout.rdbuf(old);
+
+	EXPECT_THAT(oss.str(), ::testing::HasSubstr("Result: 100"));
+}
+
+TEST(IntegrationTest, StringEquality)
+{
+	VirtualMachine vm;
+	Chunk chunk;
+
+	const uint8_t s1 = chunk.AddConstant(std::make_shared<const std::string>("abc"));
+	const uint8_t s2 = chunk.AddConstant(std::make_shared<const std::string>("abc"));
+
+	chunk.Write(OP_CONSTANT);
+	chunk.code.push_back(s1);
+	chunk.Write(OP_CONSTANT);
+	chunk.code.push_back(s2);
+	chunk.Write(OP_EQUAL);
+	chunk.Write(OP_RETURN);
+
+	const std::ostringstream oss;
+	std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
+	vm.Interpret(&chunk);
+	std::cout.rdbuf(old);
+
+	EXPECT_THAT(oss.str(), ::testing::HasSubstr("Result: true"));
+}
+
+TEST(IntegrationTest, ComplexComparisonExpression)
+{
+	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
+		chunk.WriteConstant(5.0);
+		chunk.WriteConstant(5.0);
+		chunk.Write(OP_ADD);
+		chunk.WriteConstant(10.0);
+		chunk.Write(OP_EQUAL);
+
+		chunk.Write(OP_RETURN);
+		vm.Interpret(&chunk);
+	});
+
+	EXPECT_THAT(output, ::testing::HasSubstr("Result: true"));
+}
+
+TEST(IntegrationTest, LogicalAndSimple)
+{
+	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
+		chunk.WriteConstant(true);
+		chunk.WriteConstant(false);
+		chunk.Write(OP_AND);
+		chunk.Write(OP_RETURN);
+		vm.Interpret(&chunk);
+	});
+	EXPECT_THAT(output, ::testing::HasSubstr("Result: false"));
+}
+
+TEST(IntegrationTest, LogicalOrSimple)
+{
+	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
+		chunk.WriteConstant(true);
+		chunk.WriteConstant(false);
+		chunk.Write(OP_OR);
+		chunk.Write(OP_RETURN);
+		vm.Interpret(&chunk);
+	});
+	EXPECT_THAT(output, ::testing::HasSubstr("Result: true"));
+}
+
+TEST(IntegrationTest, ShortCircuitOr)
+{
+	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
+		chunk.WriteConstant(true);
+
+		chunk.Write(OP_JUMP_IF_TRUE);
+		chunk.code.push_back(2);
+
+		chunk.WriteConstant(false);
+
+		chunk.Write(OP_RETURN);
+		vm.Interpret(&chunk);
+	});
+
+	EXPECT_THAT(output, ::testing::HasSubstr("Result: true"));
+}
+
+TEST(IntegrationTest, ShortCircuitAnd)
+{
+	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
+		chunk.WriteConstant(false);
+
+		chunk.Write(OP_JUMP_IF_FALSE);
+		chunk.code.push_back(2);
+
+		chunk.WriteConstant(true);
+
+		chunk.Write(OP_RETURN);
+		vm.Interpret(&chunk);
+	});
+
+	EXPECT_THAT(output, ::testing::HasSubstr("Result: false"));
+}
