@@ -75,6 +75,31 @@ void ValueHelper::PrintValue(const Value& val, std::ostream& out)
 		{
 			out << (v ? "true" : "false");
 		}
+		else if constexpr (std::is_same_v<T, ArrayPtr>)
+		{
+			out << "[";
+			for (size_t i = 0; i < v->elements.size(); ++i)
+			{
+				PrintValue(v->elements[i], out);
+				if (i < v->elements.size() - 1)
+				{
+					out << ", ";
+				}
+			}
+			out << "]";
+		}
+		else if constexpr (std::is_same_v<T, InstancePtr>)
+		{
+			out << "{struct}";
+		}
+		else if constexpr (std::is_same_v<T, EnumPtr>)
+		{
+			out << "variant(" << v->tag << ")";
+		}
+		else if constexpr (std::is_same_v<T, PointerPtr>)
+		{
+			out << (v ? v->targetName : "nullptr");
+		}
 		else
 		{
 			out << v;

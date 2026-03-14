@@ -63,6 +63,7 @@ public:
 	CallFrame& CurrentFrame();
 	const CallFrame& CurrentFrame() const;
 	bool HasFrames() const { return !m_frames.empty(); }
+	size_t GetFramesCount() const { return m_frames.size(); }
 
 	void SetLocal(size_t index, const Core::Value& val);
 	const Core::Value& GetLocal(size_t index) const;

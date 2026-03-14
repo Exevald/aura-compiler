@@ -1,6 +1,8 @@
 #include "VirtualMachine.h"
 
+#include <algorithm>
 #include <iostream>
+#include <utility>
 
 namespace VM::Execution
 {
@@ -12,9 +14,7 @@ VirtualMachine::VirtualMachine() = default;
 bool VirtualMachine::Interpret(const Chunk* chunk)
 {
 	if (!chunk)
-	{
 		return false;
-	}
 
 	m_context.ClearStack();
 	m_context.ClearError();
@@ -32,9 +32,16 @@ bool VirtualMachine::Interpret(const Chunk* chunk)
 	{
 		return false;
 	}
+
+	if (!m_context.StackEmpty())
+	{
+		std::cout << "Result: ";
+		Core::ValueHelper::PrintValue(m_context.PeekValue(0), std::cout);
+		std::cout << "\n";
+	}
+
 	return true;
 }
-
 void VirtualMachine::RegisterExtension(Core::OpCode opcode, ExtensionHandler handler)
 {
 	m_extensions[opcode] = std::move(handler);
@@ -42,10 +49,16 @@ void VirtualMachine::RegisterExtension(Core::OpCode opcode, ExtensionHandler han
 
 ExecutionResult VirtualMachine::Run()
 {
+	const size_t entryFrameCount = m_context.GetFramesCount();
 	for (;;)
 	{
 		try
 		{
+			if (m_context.GetFramesCount() < entryFrameCount)
+			{
+				return ExecutionResult::Success;
+			}
+
 			if (!m_context.HasFrames())
 			{
 				return ExecutionResult::Success;
@@ -90,6 +103,11 @@ ExecutionResult VirtualMachine::Run()
 			if (result < 0)
 			{
 				return ExecutionResult::RuntimeError;
+			}
+
+			if (m_context.GetFramesCount() < entryFrameCount)
+			{
+				return ExecutionResult::Success;
 			}
 
 			if (!m_context.HasFrames())
@@ -157,13 +175,6 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 
 		size_t funcSlot = frame.stackBase - 1;
 		m_context.PopFrame();
-
-		if (!m_context.HasFrames())
-		{
-			std::cout << "Result: ";
-			Core::ValueHelper::PrintValue(result, std::cout);
-			std::cout << "\n";
-		}
 
 		while (m_context.StackSize() > funcSlot)
 		{
@@ -385,6 +396,420 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		Value b = m_context.PopValue();
 		Value a = m_context.PopValue();
 		m_context.PushValue(Core::ValueHelper::DivideInt(a, b));
+		return 0;
+	}
+
+	case OP_BUILD_ARRAY: {
+		uint8_t count = instr.operand;
+		auto array = std::make_shared<Core::Array>();
+		array->elements.reserve(count);
+
+		for (int i = 0; i < count; ++i)
+		{
+			array->elements.push_back(m_context.PopValue());
+		}
+		std::ranges::reverse(array->elements);
+
+		m_context.PushValue(array);
+		return 0;
+	}
+
+	case OP_INDEX_GET: {
+		Value indexVal = m_context.PopValue();
+		Value container = m_context.PopValue();
+
+		if (!std::holds_alternative<Core::ArrayPtr>(container))
+		{
+			m_context.RaiseError("Only arrays can be indexed");
+			return -1;
+		}
+
+		auto& arr = std::get<Core::ArrayPtr>(container);
+		auto idx = Core::ValueHelper::As<int64_t>(indexVal);
+
+		if (idx < 0 || idx >= arr->elements.size())
+		{
+			m_context.RaiseError("Index out of bounds");
+			return -1;
+		}
+
+		m_context.PushValue(arr->elements[idx]);
+		return 0;
+	}
+
+	case OP_MEMBER_GET: {
+		uint8_t fieldIdx = instr.operand;
+
+		if (Value obj = m_context.PopValue(); std::holds_alternative<Core::InstancePtr>(obj))
+		{
+			auto& inst = std::get<Core::InstancePtr>(obj);
+			m_context.PushValue(inst->fields[fieldIdx]);
+		}
+		else
+		{
+			m_context.RaiseError("Only instances have members");
+			return -1;
+		}
+		return 0;
+	}
+
+	case OP_BUILD_STRUCT: {
+		uint8_t fieldCount = instr.operand;
+		auto inst = std::make_shared<Core::Instance>();
+		inst->fields.resize(fieldCount);
+
+		for (int i = fieldCount - 1; i >= 0; --i)
+		{
+			inst->fields[i] = m_context.PopValue();
+		}
+		m_context.PushValue(inst);
+		return 0;
+	}
+
+	case OP_INDEX_SET: {
+		Value val = m_context.PopValue();
+		Value indexVal = m_context.PopValue();
+		Value container = m_context.PopValue();
+
+		if (!std::holds_alternative<Core::ArrayPtr>(container))
+		{
+			m_context.RaiseError("Only arrays support indexed assignment");
+			return -1;
+		}
+
+		auto& arr = std::get<Core::ArrayPtr>(container);
+		auto idx = Core::ValueHelper::As<int64_t>(indexVal);
+
+		if (idx < 0 || idx >= arr->elements.size())
+		{
+			m_context.RaiseError("Array index out of bounds");
+			return -1;
+		}
+
+		arr->elements[idx] = val;
+		m_context.PushValue(val);
+		return 0;
+	}
+
+	case OP_MEMBER_SET: {
+		uint8_t fieldIdx = instr.operand;
+		Value val = m_context.PopValue();
+		Value obj = m_context.PopValue();
+
+		if (!std::holds_alternative<Core::InstancePtr>(obj))
+		{
+			m_context.RaiseError("Only instances have members");
+			return -1;
+		}
+
+		auto& inst = std::get<Core::InstancePtr>(obj);
+		if (fieldIdx >= inst->fields.size())
+		{
+			m_context.RaiseError("Field index out of bounds");
+			return -1;
+		}
+
+		inst->fields[fieldIdx] = val;
+		m_context.PushValue(val);
+		return 0;
+	}
+
+	case OP_BUILD_ENUM: {
+		uint8_t tag = instr.operand;
+		uint8_t argCount = frame.function->chunk->code[frame.ip++];
+
+		auto ev = std::make_shared<Core::EnumVariant>();
+		ev->tag = tag;
+		ev->args.resize(argCount);
+
+		for (int i = argCount - 1; i >= 0; --i)
+		{
+			ev->args[i] = m_context.PopValue();
+		}
+
+		m_context.PushValue(ev);
+		return 0;
+	}
+
+	case OP_GET_ENUM_TAG: {
+		if (Value v = m_context.PopValue();
+			std::holds_alternative<Core::EnumPtr>(v))
+		{
+			m_context.PushValue(std::get<Core::EnumPtr>(v)->tag);
+		}
+		else
+		{
+			m_context.RaiseError("Value is not an enum variant");
+			return -1;
+		}
+		return 0;
+	}
+
+	case OP_ADDR_GLOBAL: {
+		uint8_t nameIdx = instr.operand;
+		std::string name = Core::ValueHelper::ToString(constants[nameIdx]);
+
+		auto ptr = std::make_shared<Core::Pointer>();
+		ptr->targetName = "&global:" + name;
+
+		ptr->get = [this, name] {
+			Value val;
+			m_context.GetGlobal(name, val);
+			return val;
+		};
+		ptr->set = [this, name](Value val) {
+			m_context.SetGlobal(name, std::move(val));
+		};
+
+		m_context.PushValue(ptr);
+		return 0;
+	}
+
+	case OP_ADDR_MEMBER: {
+		Value indexVal = m_context.PopValue();
+		Value container = m_context.PopValue();
+
+		auto ptr = std::make_shared<Core::Pointer>();
+
+		if (std::holds_alternative<Core::ArrayPtr>(container))
+		{
+			auto arr = std::get<Core::ArrayPtr>(container);
+			auto idx = Core::ValueHelper::As<int64_t>(indexVal);
+
+			ptr->get = [arr, idx]() { return arr->elements[idx]; };
+			ptr->set = [arr, idx](const Value& v) { arr->elements[idx] = v; };
+		}
+		else if (std::holds_alternative<Core::InstancePtr>(container))
+		{
+			auto inst = std::get<Core::InstancePtr>(container);
+			auto idx = Core::ValueHelper::As<int64_t>(indexVal);
+
+			ptr->get = [inst, idx] { return inst->fields[idx]; };
+			ptr->set = [inst, idx](const Value& v) { inst->fields[idx] = v; };
+		}
+
+		m_context.PushValue(ptr);
+		return 0;
+	}
+
+	case OP_DEREF_GET: {
+		Value v = m_context.PopValue();
+		if (!std::holds_alternative<Core::PointerPtr>(v))
+		{
+			m_context.RaiseError("Can only dereference pointer types");
+			return -1;
+		}
+		m_context.PushValue(std::get<Core::PointerPtr>(v)->get());
+		return 0;
+	}
+
+	case OP_DEREF_SET: {
+		Value val = m_context.PopValue();
+		Value pVal = m_context.PopValue();
+
+		if (!std::holds_alternative<Core::PointerPtr>(pVal))
+		{
+			m_context.RaiseError("Can only dereference pointer types");
+			return -1;
+		}
+
+		std::get<Core::PointerPtr>(pVal)->set(val);
+		m_context.PushValue(val);
+		return 0;
+	}
+
+	case OP_MAKE_ITER: {
+		Value iterable = m_context.PopValue();
+		auto it = std::make_shared<Core::Iterator>();
+
+		if (std::holds_alternative<Core::ArrayPtr>(iterable))
+		{
+			auto arr = std::get<Core::ArrayPtr>(iterable);
+			auto index = std::make_shared<size_t>(0);
+
+			it->next = [arr, index]() -> std::pair<bool, Value> {
+				if (*index < arr->elements.size())
+				{
+					return { true, arr->elements[(*index)++] };
+				}
+				return { false, std::monostate{} };
+			};
+		}
+		else
+		{
+			m_context.RaiseError("Object is not iterable");
+			return -1;
+		}
+
+		m_context.PushValue(it);
+		return 0;
+	}
+
+	case OP_ITER_NEXT: {
+		uint8_t jumpOffset = instr.operand;
+		Value v = m_context.PeekValue(0);
+
+		if (!std::holds_alternative<Core::IteratorPtr>(v))
+		{
+			m_context.RaiseError("Expected iterator on stack");
+			return -1;
+		}
+
+		if (auto [hasValue, value] = std::get<Core::IteratorPtr>(v)->next(); hasValue)
+		{
+			m_context.PushValue(value);
+		}
+		else
+		{
+			frame.ip += jumpOffset;
+		}
+		return 0;
+	}
+
+	case OP_ITER_TAKE: {
+		auto n = Core::ValueHelper::As<int64_t>(m_context.PopValue());
+		Value v = m_context.PopValue();
+		auto sourceIt = std::get<Core::IteratorPtr>(v);
+
+		auto it = std::make_shared<Core::Iterator>();
+		auto remaining = std::make_shared<int64_t>(n);
+
+		it->next = [sourceIt, remaining]() -> std::pair<bool, Value> {
+			if (*remaining > 0)
+			{
+				(*remaining)--;
+				return sourceIt->next();
+			}
+			return { false, std::monostate{} };
+		};
+		m_context.PushValue(it);
+		return 0;
+	}
+
+	case OP_ITER_DROP: {
+		auto n = Core::ValueHelper::As<int64_t>(m_context.PopValue());
+		Value v = m_context.PopValue();
+		auto sourceIt = std::get<Core::IteratorPtr>(v);
+
+		auto it = std::make_shared<Core::Iterator>();
+		auto dropped = std::make_shared<bool>(false);
+
+		it->next = [sourceIt, n, dropped]() -> std::pair<bool, Value> {
+			if (!*dropped)
+			{
+				for (int i = 0; i < n; ++i)
+				{
+					std::ignore = sourceIt->next();
+				}
+				*dropped = true;
+			}
+			return sourceIt->next();
+		};
+		m_context.PushValue(it);
+		return 0;
+	}
+
+	case OP_ITER_TRANSFORM: {
+		Value fnVal = m_context.PopValue();
+		Value itVal = m_context.PopValue();
+		auto sourceIt = std::get<Core::IteratorPtr>(itVal);
+		auto fn = std::get<Core::FunctionPtr>(fnVal);
+
+		auto it = std::make_shared<Core::Iterator>();
+		it->next = [this, sourceIt, fn]() -> std::pair<bool, Value> {
+			auto [hasValue, val] = sourceIt->next();
+			if (!hasValue)
+			{
+				return { false, std::monostate{} };
+			}
+
+			m_context.PushValue(fn);
+			m_context.PushValue(val);
+
+			const size_t argBase = m_context.StackSize() - 1;
+			m_context.PushFrame(fn, argBase);
+
+			this->Run();
+
+			return { true, m_context.PopValue() };
+		};
+
+		m_context.PushValue(it);
+		return 0;
+	}
+
+	case OP_ITER_REVERSE: {
+		Value v = m_context.PopValue();
+		auto sourceIt = std::get<Core::IteratorPtr>(v);
+
+		auto it = std::make_shared<Core::Iterator>();
+		auto buffer = std::make_shared<std::vector<Value>>();
+		auto initialized = std::make_shared<bool>(false);
+		auto index = std::make_shared<int64_t>(0);
+
+		it->next = [sourceIt, buffer, initialized, index]() -> std::pair<bool, Value> {
+			if (!*initialized)
+			{
+				while (true)
+				{
+					auto [has, val] = sourceIt->next();
+					if (!has)
+					{
+						break;
+					}
+					buffer->push_back(val);
+				}
+				*index = buffer->size() - 1;
+				*initialized = true;
+			}
+			if (*index >= 0)
+			{
+				return { true, (*buffer)[(*index)--] };
+			}
+			return { false, std::monostate{} };
+		};
+		m_context.PushValue(it);
+		return 0;
+	}
+
+	case OP_ITER_FILTER: {
+		Value fnVal = m_context.PopValue();
+		Value itVal = m_context.PopValue();
+		auto sourceIt = std::get<Core::IteratorPtr>(itVal);
+		auto fn = std::get<Core::FunctionPtr>(fnVal);
+
+		auto it = std::make_shared<Core::Iterator>();
+		it->next = [this, sourceIt, fn]() -> std::pair<bool, Value> {
+			while (true)
+			{
+				auto [hasValue, val] = sourceIt->next();
+				if (!hasValue)
+				{
+					return { false, std::monostate{} };
+				}
+
+				m_context.PushValue(fn);
+				m_context.PushValue(val);
+
+				const size_t argBase = m_context.StackSize() - 1;
+				m_context.PushFrame(fn, argBase);
+
+				this->Run();
+
+				if (Core::ValueHelper::As<bool>(m_context.PopValue()))
+				{
+					return { true, val };
+				}
+			}
+		};
+		m_context.PushValue(it);
+		return 0;
+	}
+
+	case OP_PRINT: {
+		std::cout << "Result: ";
+		Core::ValueHelper::PrintValue(m_context.PeekValue(0), std::cout);
+		std::cout << "\n";
 		return 0;
 	}
 

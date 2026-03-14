@@ -8,6 +8,25 @@
 #include <string>
 #include <variant>
 
+namespace VM::Core
+{
+struct Array;
+struct Instance;
+struct EnumVariant;
+struct Pointer;
+struct Function;
+struct Iterator;
+
+using FunctionPtr = std::shared_ptr<Function>;
+using ArrayPtr = std::shared_ptr<Array>;
+using InstancePtr = std::shared_ptr<Instance>;
+using EnumPtr = std::shared_ptr<EnumVariant>;
+using PointerPtr = std::shared_ptr<Pointer>;
+using StringPtr = std::shared_ptr<const std::string>;
+using IteratorPtr = std::shared_ptr<Iterator>;
+
+} // namespace VM::Core
+
 namespace VM::Execution
 {
 struct Chunk;
@@ -16,18 +35,23 @@ struct Chunk;
 namespace VM::Core
 {
 
-struct Function;
-using FunctionPtr = std::shared_ptr<Function>;
-
-using StringPtr = std::shared_ptr<const std::string>;
-
 using Value = std::variant<
 	std::monostate,
 	bool,
 	int64_t,
 	double,
 	StringPtr,
-	FunctionPtr>;
+	FunctionPtr,
+	ArrayPtr,
+	InstancePtr,
+	EnumPtr,
+	PointerPtr,
+	IteratorPtr>;
+
+struct Iterator
+{
+	std::function<std::pair<bool, Value>()> next;
+};
 
 struct Function
 {
@@ -39,8 +63,28 @@ struct Function
 	~Function();
 };
 
-using StringPtr = std::shared_ptr<const std::string>;
-using Value = std::variant<std::monostate, bool, int64_t, double, StringPtr, FunctionPtr>;
+struct Array
+{
+	std::vector<Value> elements;
+};
+
+struct Instance
+{
+	std::vector<Value> fields;
+};
+
+struct EnumVariant
+{
+	int tag;
+	std::vector<Value> args;
+};
+
+struct Pointer
+{
+	std::function<Value()> get;
+	std::function<void(Value)> set;
+	std::string targetName;
+};
 
 template <typename T>
 concept PrimitiveValue = std::is_same_v<T, bool> || std::is_same_v<T, int64_t> || std::is_same_v<T, double>;
@@ -96,8 +140,8 @@ public:
 	static Value Subtract(const Value& lhs, const Value& rhs);
 	static Value Multiply(const Value& lhs, const Value& rhs);
 	static Value Divide(const Value& lhs, const Value& rhs);
-	static Value DivideInt(const Value& lhs, const Value& rhs) ;
-	static Value Modulo(const Value& lhs, const Value& rhs) ;
+	static Value DivideInt(const Value& lhs, const Value& rhs);
+	static Value Modulo(const Value& lhs, const Value& rhs);
 	static Value Negate(const Value& val);
 
 	static bool Equal(const Value& lhs, const Value& rhs);

@@ -42,6 +42,34 @@ enum class OpCode : uint8_t
 	OP_AND = 0x42,
 	OP_OR = 0x43,
 
+	OP_BUILD_ARRAY = 0x50,
+	OP_INDEX_GET = 0x51,
+	OP_INDEX_SET = 0x52,
+
+	OP_BUILD_STRUCT = 0x53,
+	OP_MEMBER_GET = 0x54,
+	OP_MEMBER_SET = 0x55,
+	OP_BUILD_ENUM = 0x56,
+	OP_GET_ENUM_TAG = 0x57,
+	OP_GET_ENUM_ARG = 0x58,
+
+	OP_ADDR_LOCAL = 0x60,
+	OP_ADDR_GLOBAL = 0x61,
+	OP_ADDR_MEMBER = 0x62,
+
+	OP_DEREF_GET = 0x63,
+	OP_DEREF_SET = 0x64,
+
+	OP_MAKE_ITER = 0x70,
+	OP_ITER_NEXT = 0x71,
+	OP_ITER_DROP = 0x72,
+	OP_ITER_TAKE = 0x73,
+	OP_ITER_REVERSE = 0x74,
+	OP_ITER_FILTER = 0x75,
+	OP_ITER_TRANSFORM = 0x76,
+
+	OP_PRINT = 0x80,
+
 	OP_RETURN = 0xFF,
 };
 
@@ -85,6 +113,20 @@ constexpr std::string_view GetOpCodeName(const OpCode opcode) noexcept
 		return "OP_LESS";
 	case OpCode::OP_NOT:
 		return "OP_NOT";
+	case OpCode::OP_BUILD_ARRAY:
+		return "OP_BUILD_ARRAY";
+	case OpCode::OP_INDEX_GET:
+		return "OP_INDEX_GET";
+	case OpCode::OP_BUILD_STRUCT:
+		return "OP_BUILD_STRUCT";
+	case OpCode::OP_MEMBER_GET:
+		return "OP_MEMBER_GET";
+	case OpCode::OP_ADDR_GLOBAL:
+		return "OP_ADDR_GLOBAL";
+	case OpCode::OP_DEREF_SET:
+		return "OP_DEREF_SET";
+	case OpCode::OP_DEREF_GET:
+		return "OP_DEREF_GET";
 	default:
 		return "OP_UNKNOWN";
 	}
@@ -106,6 +148,15 @@ constexpr bool OpCodeHasOperand(const OpCode opcode)
 	case OP_SET_LOCAL:
 	case OP_CALL:
 	case OP_LOOP:
+	case OP_BUILD_ARRAY:
+	case OP_BUILD_STRUCT:
+	case OP_MEMBER_GET:
+	case OP_MEMBER_SET:
+	case OP_BUILD_ENUM:
+	case OP_GET_ENUM_ARG:
+	case OP_ADDR_LOCAL:
+	case OP_ADDR_GLOBAL:
+	case OP_ITER_NEXT:
 		return true;
 	default:
 		return false;
