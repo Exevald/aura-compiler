@@ -1,4 +1,5 @@
-#include "ExecutionContext.h"
+#include "../../core/values/ValueHelper.h"
+#include "../../runtime/ExecutionContext.h"
 #include "VirtualMachine.h"
 
 #include <gmock/gmock-matchers.h>

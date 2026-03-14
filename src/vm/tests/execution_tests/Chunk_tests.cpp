@@ -1,3 +1,4 @@
+#include "../../core/values/ValueHelper.h"
 #include "Chunk.h"
 
 #include <gtest/gtest.h>

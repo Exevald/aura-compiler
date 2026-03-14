@@ -2,9 +2,9 @@
 
 #include "../core/Instruction.h"
 #include "../core/OpCode.h"
-#include "../core/StringPool.h"
+#include "../runtime/ExecutionContext.h"
+#include "../runtime/StringPool.h"
 #include "Chunk.h"
-#include "ExecutionContext.h"
 
 #include <functional>
 #include <memory>

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../core/Instruction.h"
-#include "../core/Value.h"
+#include "../core/values/Value.h"
 
 #include <functional>
 #include <memory>

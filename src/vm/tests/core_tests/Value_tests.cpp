@@ -1,5 +1,6 @@
-#include "StringPool.h"
-#include "Value.h"
+#include "../../core/values/Value.h"
+#include "../../runtime/StringPool.h"
+#include "values/ValueHelper.h"
 
 #include <cmath>
 #include <gtest/gtest.h>

@@ -1,5 +1,6 @@
+#include "ValueHelper.h"
+#include "../../execution/Chunk.h"
 #include "Value.h"
-#include "../execution/Chunk.h"
 
 #include <sstream>
 #include <stdexcept>

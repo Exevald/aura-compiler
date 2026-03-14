@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../core/Value.h"
+#include "../core/values/Value.h"
 
 #include <map>
 #include <memory>

@@ -16,18 +16,19 @@ FetchContent_MakeAvailable(googletest)
 add_executable(
         vm
         main.cpp
-        core/Value.cpp
-        core/StringPool.cpp
-        execution/ExecutionContext.cpp
+        core/values/ValueHelper.cpp
+        runtime/StringPool.cpp
+        runtime/ExecutionContext.cpp
         execution/Chunk.cpp
         execution/VirtualMachine.cpp
+        execution/handlers/OpHandlers.h
 )
 
 add_library(
         vm_lib
-        core/Value.cpp
-        core/StringPool.cpp
-        execution/ExecutionContext.cpp
+        core/values/ValueHelper.cpp
+        runtime/StringPool.cpp
+        runtime/ExecutionContext.cpp
         execution/Chunk.cpp
         execution/VirtualMachine.cpp
 )

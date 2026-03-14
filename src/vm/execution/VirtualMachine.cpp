@@ -1,4 +1,5 @@
 #include "VirtualMachine.h"
+#include "../core/values/ValueHelper.h"
 
 #include <algorithm>
 #include <iostream>
