@@ -1,3 +1,6 @@
 add_subdirectory(lexer)
 add_subdirectory(parser)
 add_subdirectory(rulesBuilder)
+add_subdirectory(ast)
+add_subdirectory(bytecode)
+add_subdirectory(vm)

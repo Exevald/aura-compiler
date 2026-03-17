@@ -21,7 +21,6 @@ add_executable(
         runtime/ExecutionContext.cpp
         execution/Chunk.cpp
         execution/VirtualMachine.cpp
-        execution/handlers/OpHandlers.h
 )
 
 add_library(

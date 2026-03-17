@@ -52,6 +52,7 @@ KeywordMap::KeywordMap()
 	m_map["transaction"] = TokenType::KW_TRANSACTION;
 	m_map["context"] = TokenType::KW_CONTEXT;
 	m_map["comptime"] = TokenType::KW_COMPTIME;
+	m_map["print"] = TokenType::KW_PRINT;
 	m_map["and"] = TokenType::KW_AND;
 	m_map["or"] = TokenType::KW_OR;
 	m_map["not"] = TokenType::KW_NOT;

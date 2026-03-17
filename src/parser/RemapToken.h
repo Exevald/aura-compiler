@@ -57,6 +57,8 @@ inline std::string RemapTokenTypeToString(const Token& t)
 		return "effect";
 	case TokenType::KW_COMPTIME:
 		return "comptime";
+	case TokenType::KW_PRINT:
+		return "print";
 
 	case TokenType::KW_IF:
 		return "if";

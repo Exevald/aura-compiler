@@ -5,6 +5,32 @@
 #include <iostream>
 #include <utility>
 
+namespace
+{
+
+std::string ValueToString(const VM::Core::Value& value)
+{
+	if (std::holds_alternative<long long>(value))
+	{
+		return std::to_string(std::get<long long>(value));
+	}
+	if (std::holds_alternative<double>(value))
+	{
+		return std::to_string(std::get<double>(value));
+	}
+	if (std::holds_alternative<bool>(value))
+	{
+		return std::get<bool>(value) ? "true" : "false";
+	}
+	if (std::holds_alternative<std::shared_ptr<const std::string>>(value))
+	{
+		return *std::get<std::shared_ptr<const std::string>>(value);
+	}
+	return "";
+}
+
+} // namespace
+
 namespace VM::Execution
 {
 
@@ -32,13 +58,6 @@ bool VirtualMachine::Interpret(const Chunk* chunk)
 	if (Run() != ExecutionResult::Success)
 	{
 		return false;
-	}
-
-	if (!m_context.StackEmpty())
-	{
-		std::cout << "Result: ";
-		Core::ValueHelper::PrintValue(m_context.PeekValue(0), std::cout);
-		std::cout << "\n";
 	}
 
 	return true;
@@ -244,17 +263,21 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	}
 
 	case OP_ADD: {
-		auto b = m_context.PopValue();
-		if (auto a = m_context.PopValue();
-			Core::ValueHelper::IsString(a) || Core::ValueHelper::IsString(b))
+		Value b = m_context.PopValue();
+		Value a = m_context.PopValue();
+		if (std::holds_alternative<std::shared_ptr<const std::string>>(a)
+			|| std::holds_alternative<std::shared_ptr<const std::string>>(b))
 		{
-			m_context.PushValue(
-				m_stringPool.Intern(
-					Core::ValueHelper::ToString(a) + Core::ValueHelper::ToString(b)));
+			std::string result = ValueToString(a) + ValueToString(b);
+			m_context.PushValue(std::make_shared<const std::string>(result));
 		}
-		else
+		else if (std::holds_alternative<long long>(a) && std::holds_alternative<long long>(b))
 		{
-			m_context.PushValue(Core::ValueHelper::Add(a, b));
+			m_context.PushValue(std::get<long long>(a) + std::get<long long>(b));
+		}
+		else if (std::holds_alternative<double>(a) && std::holds_alternative<double>(b))
+		{
+			m_context.PushValue(std::get<double>(a) + std::get<double>(b));
 		}
 		return 0;
 	}
@@ -348,25 +371,18 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	}
 
 	case OP_JUMP_IF_TRUE: {
-		if (Core::ValueHelper::As<bool>(m_context.PeekValue(0)))
+		if (Core::ValueHelper::As<bool>(m_context.PopValue()))
 		{
 			frame.ip += instr.operand;
 		}
-		else
-		{
-			m_context.PopValue();
-		}
-	}
 		return 0;
+	}
 
 	case OP_JUMP_IF_FALSE: {
-		if (!Core::ValueHelper::As<bool>(m_context.PeekValue(0)))
+		if (bool condition = Core::ValueHelper::As<bool>(m_context.PopValue());
+			!condition)
 		{
 			frame.ip += instr.operand;
-		}
-		else
-		{
-			m_context.PopValue();
 		}
 		return 0;
 	}
@@ -808,8 +824,8 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	}
 
 	case OP_PRINT: {
-		std::cout << "Result: ";
-		Core::ValueHelper::PrintValue(m_context.PeekValue(0), std::cout);
+		Value val = m_context.PopValue();
+		Core::ValueHelper::PrintValue(val, std::cout);
 		std::cout << "\n";
 		return 0;
 	}

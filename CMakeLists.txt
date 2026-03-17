@@ -18,7 +18,13 @@ add_subdirectory(tests)
 
 add_executable(
         aura-compiler
+        src/Compiler.cpp
         main.cpp
 )
 
-target_link_libraries(aura-compiler PRIVATE lexer_lib)
+target_link_libraries(aura-compiler PRIVATE
+        bytecode_lib
+        ast_lib
+        parser_lib
+        vm_lib
+)

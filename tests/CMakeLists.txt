@@ -1,2 +1,4 @@
 add_subdirectory(lexer_tests)
 add_subdirectory(parser_tests)
+add_subdirectory(ast_tests)
+add_subdirectory(compiler_tests)

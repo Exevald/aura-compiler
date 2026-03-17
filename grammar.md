@@ -4,7 +4,7 @@ program = module_decl top_level_list | top_level_list ;
 module_decl = "module" qualified_id ";" ;
 
 top_level_list = top_level_node top_level_list | EPSILON ;
-top_level_node = import_decl | export_decl | declaration | effect_def | actor_decl ;
+top_level_node = import_decl | export_decl | declaration | effect_def | actor_decl | statement ;
 
 import_decl = "import" qualified_id import_as_opt ";" ;
 import_as_opt = "as" identifier | EPSILON ;
@@ -19,16 +19,18 @@ declaration = var_decl | const_decl | func_decl | type_alias | struct_decl | enu
 declaration_no_semi = var_decl_no_semi | const_decl_no_semi | func_decl | type_alias_no_semi | struct_decl_no_semi | enum_decl_no_semi | interface_decl_no_semi ;
 
 var_decl = var_decl_no_semi ";" ;
-var_decl_no_semi = storage_mod_opt "var" identifier type_guide_opt assign_expr_opt ;
-storage_mod_opt = "shared" | "thread_local" | EPSILON ;
+var_decl_no_semi = "var" identifier type_guide_opt assign_expr_opt
+                 | "shared" "var" identifier type_guide_opt assign_expr_opt
+                 | "thread_local" "var" identifier type_guide_opt assign_expr_opt ;
+
 type_guide_opt = ":" dataType | EPSILON ;
 assign_expr_opt = "=" expression | EPSILON ;
 
 const_decl = const_decl_no_semi ";" ;
 const_decl_no_semi = "const" identifier type_guide_opt "=" expression ;
 
-func_decl = comptime_opt "fn" identifier type_params_opt "(" param_list_opt ")" type_guide_opt context_req_opt effect_spec_opt contract_list block_stmt ;
-comptime_opt = "comptime" | EPSILON ;
+func_decl = "fn" identifier type_params_opt "(" param_list_opt ")" type_guide_opt context_req_opt effect_spec_opt contract_list block_stmt
+          | "comptime" "fn" identifier type_params_opt "(" param_list_opt ")" type_guide_opt context_req_opt effect_spec_opt contract_list block_stmt ;
 
 type_alias = type_alias_no_semi ";" ;
 type_alias_no_semi = "type" identifier type_params_opt "=" dataType ;
@@ -121,10 +123,13 @@ simple_stmt = var_decl_no_semi
             | handle_stmt
             | transaction_stmt
             | unsafe_stmt
+            | print_stmt
             | expression ;
 
 block_stmt = "{" statement_list "}" ;
 statement_list = statement statement_list | EPSILON ;
+
+print_stmt = "print" expression ;
 
 return_stmt = "return" expression_opt ;
 expression_opt = expression | EPSILON ;
