@@ -2,6 +2,26 @@
 
 #include <memory>
 
+namespace
+{
+
+ASTNode* FindChild(const InternalNode& node, const std::string& lhs)
+{
+	for (auto& child : node.children)
+	{
+		if (auto* i = dynamic_cast<InternalNode*>(child.get()))
+		{
+			if (i->ruleLhs == lhs)
+			{
+				return i;
+			}
+		}
+	}
+	return nullptr;
+}
+
+} // namespace
+
 VM::Execution::Chunk BytecodeGenerator::Compile(ASTNode* root)
 {
 	m_symbols.Reset();
@@ -58,29 +78,57 @@ void BytecodeGenerator::Visit(InternalNode& node)
 {
 	using namespace VM::Core;
 
-	if (node.ruleLhs == "additive"
+	if (node.ruleLhs == "assignment_expr")
+	{
+		HandleAssignment(node);
+	}
+	else if (node.ruleLhs == "iter_stmt")
+	{
+		HandleIter(node);
+	}
+	else if (node.ruleLhs == "array_lit")
+	{
+		uint8_t count = 0;
+		for (auto& child : node.children)
+		{
+			if (auto* i = dynamic_cast<InternalNode*>(child.get()))
+			{
+				if (i->ruleLhs == "arg_list_opt")
+				{
+					count = CountAndEmitArgs(i);
+				}
+			}
+		}
+		CurrentChunk().Write(OpCode::OP_BUILD_ARRAY);
+		CurrentChunk().code.push_back(count);
+	}
+	else if (node.ruleLhs == "additive"
 		|| node.ruleLhs == "multiplicative"
 		|| node.ruleLhs == "equality"
 		|| node.ruleLhs == "relational")
 	{
 		if (!node.children.empty())
+		{
 			node.children[0]->Accept(*this);
+		}
 		if (node.children.size() > 1)
+		{
 			node.children[1]->Accept(*this);
+		}
 	}
 	else if (node.ruleLhs == "additive_tail"
 		|| node.ruleLhs == "multiplicative_tail"
 		|| node.ruleLhs == "equality_tail"
 		|| node.ruleLhs == "relational_tail")
 	{
-		if (node.children.size() >= 2)
+		if (!node.children.empty())
 		{
 			node.children[1]->Accept(*this);
-			if (const auto* op = dynamic_cast<LeafNode*>(node.children[0].get()))
+			if (auto* op = dynamic_cast<LeafNode*>(node.children[0].get()))
 			{
 				EmitBinaryOp(op->value);
 			}
-			if (node.children.size() == 3)
+			if (node.children.size() > 2)
 			{
 				node.children[2]->Accept(*this);
 			}
@@ -96,15 +144,19 @@ void BytecodeGenerator::Visit(InternalNode& node)
 	}
 	else if (node.ruleLhs == "trailer")
 	{
-		auto* first = dynamic_cast<LeafNode*>(node.children[0].get());
-		if (first && first->value == "(")
+		if (const auto* first = dynamic_cast<LeafNode*>(node.children[0].get());
+			first && first->value == "(")
 		{
 			uint8_t count = 0;
 			for (auto& child : node.children)
 			{
 				if (auto* i = dynamic_cast<InternalNode*>(child.get()))
+				{
 					if (i->ruleLhs == "arg_list_opt")
+					{
 						count = CountAndEmitArgs(i);
+					}
+				}
 			}
 			CurrentChunk().Write(OpCode::OP_CALL);
 			CurrentChunk().code.push_back(count);
@@ -117,31 +169,7 @@ void BytecodeGenerator::Visit(InternalNode& node)
 	}
 	else if (node.ruleLhs == "var_decl_no_semi")
 	{
-		std::string name;
-		ASTNode* init = nullptr;
-		for (auto& c : node.children)
-		{
-			if (const auto* l = dynamic_cast<LeafNode*>(c.get()))
-				if (l->type == "identifier")
-				{
-					name = l->value;
-				}
-			if (auto* i = dynamic_cast<InternalNode*>(c.get()))
-				if (i->ruleLhs == "assign_expr_opt" && !i->children.empty())
-				{
-					init = i->children[1].get();
-				}
-		}
-		if (init)
-		{
-			init->Accept(*this);
-		}
-		else
-		{
-			CurrentChunk().WriteConstant(0LL);
-		}
-		CurrentChunk().Write(OpCode::OP_SET_LOCAL);
-		CurrentChunk().code.push_back(m_symbols.Define(name));
+		HandleVarDecl(node);
 	}
 	else if (node.ruleLhs == "func_decl")
 	{
@@ -167,9 +195,130 @@ void BytecodeGenerator::Visit(InternalNode& node)
 	else
 	{
 		for (auto& child : node.children)
+		{
 			if (child)
+			{
 				child->Accept(*this);
+			}
+		}
 	}
+}
+
+void BytecodeGenerator::HandleAssignment(const InternalNode& node)
+{
+	using namespace VM::Core;
+	const auto* tail = dynamic_cast<InternalNode*>(FindChild(node, "assignment_tail"));
+	if (!tail || tail->children.empty())
+	{
+		node.children[0]->Accept(*this);
+		return;
+	}
+
+	ASTNode* rhs = tail->children[1].get();
+	const auto* lhsExpr = dynamic_cast<InternalNode*>(node.children[0].get());
+
+	std::string varName;
+	const InternalNode* trailerList = nullptr;
+
+	const auto* current = lhsExpr;
+	while (current && current->ruleLhs != "identifier_expr")
+	{
+		if (!current->children.empty())
+		{
+			current = dynamic_cast<InternalNode*>(current->children[0].get());
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	if (current && current->ruleLhs == "identifier_expr")
+	{
+		varName = dynamic_cast<LeafNode*>(current->children[0].get())->value;
+		if (current->children.size() > 2)
+		{
+			trailerList = dynamic_cast<InternalNode*>(current->children[2].get());
+		}
+	}
+
+	bool isArraySet = false;
+	if (trailerList && !trailerList->children.empty())
+	{
+		if (const auto* trailer = dynamic_cast<InternalNode*>(trailerList->children[0].get());
+			trailer && dynamic_cast<LeafNode*>(trailer->children[0].get())->value == "[")
+		{
+			isArraySet = true;
+
+			if (auto sIdx = m_symbols.Resolve(varName))
+			{
+				CurrentChunk().Write(OpCode::OP_GET_LOCAL);
+				CurrentChunk().code.push_back(*sIdx);
+			}
+			else
+			{
+				const uint8_t nIdx = CurrentChunk().AddConstant(
+					std::make_shared<const std::string>(varName));
+				CurrentChunk().Write(OpCode::OP_GET_GLOBAL);
+				CurrentChunk().code.push_back(nIdx);
+			}
+			trailer->children[1]->Accept(*this);
+			rhs->Accept(*this);
+
+			CurrentChunk().Write(OpCode::OP_INDEX_SET);
+		}
+	}
+
+	if (!isArraySet)
+	{
+		rhs->Accept(*this);
+		if (const auto sIdx = m_symbols.Resolve(varName))
+		{
+			CurrentChunk().Write(OpCode::OP_SET_LOCAL);
+			CurrentChunk().code.push_back(*sIdx);
+		}
+		else
+		{
+			const uint8_t nIdx = CurrentChunk().AddConstant(
+				std::make_shared<const std::string>(varName));
+			CurrentChunk().Write(OpCode::OP_SET_GLOBAL);
+			CurrentChunk().code.push_back(nIdx);
+		}
+	}
+}
+
+void BytecodeGenerator::HandleVarDecl(InternalNode& node)
+{
+	using namespace VM::Core;
+	std::string name;
+	ASTNode* init = nullptr;
+	for (auto& c : node.children)
+	{
+		if (const auto* l = dynamic_cast<LeafNode*>(c.get()))
+		{
+			if (l->type == "identifier")
+			{
+				name = l->value;
+			}
+		}
+		if (const auto* i = dynamic_cast<InternalNode*>(c.get()))
+		{
+			if (i->ruleLhs == "assign_expr_opt" && !i->children.empty())
+			{
+				init = i->children[1].get();
+			}
+		}
+	}
+	if (init)
+	{
+		init->Accept(*this);
+	}
+	else
+	{
+		CurrentChunk().WriteConstant(0LL);
+	}
+	CurrentChunk().Write(OpCode::OP_SET_LOCAL);
+	CurrentChunk().code.push_back(m_symbols.Define(name));
 }
 
 void BytecodeGenerator::EmitBinaryOp(const std::string& op) const
@@ -277,18 +426,21 @@ void BytecodeGenerator::HandleIf(const InternalNode& node)
 		CurrentChunk().Write(OpCode::OP_JUMP);
 		const size_t jumpToEndAddr = CurrentChunk().code.size();
 		CurrentChunk().code.push_back(0xff);
-		CurrentChunk().code[jumpToElseAddr] = static_cast<uint8_t>(CurrentChunk().code.size() - jumpToElseAddr - 1);
+		CurrentChunk().code[jumpToElseAddr]
+			= static_cast<uint8_t>(CurrentChunk().code.size() - jumpToElseAddr - 1);
 
 		elseInt->children[1]->Accept(*this);
-		CurrentChunk().code[jumpToEndAddr] = static_cast<uint8_t>(CurrentChunk().code.size() - jumpToEndAddr - 1);
+		CurrentChunk().code[jumpToEndAddr]
+			= static_cast<uint8_t>(CurrentChunk().code.size() - jumpToEndAddr - 1);
 	}
 	else
 	{
-		CurrentChunk().code[jumpToElseAddr] = static_cast<uint8_t>(CurrentChunk().code.size() - jumpToElseAddr - 1);
+		CurrentChunk().code[jumpToElseAddr]
+			= static_cast<uint8_t>(CurrentChunk().code.size() - jumpToElseAddr - 1);
 	}
 }
 
-void BytecodeGenerator::HandleWhile(InternalNode& node)
+void BytecodeGenerator::HandleWhile(const InternalNode& node)
 {
 	using namespace VM::Core;
 
@@ -342,19 +494,25 @@ void BytecodeGenerator::HandleFunctionDecl(InternalNode& node)
 	InternalNode *params = nullptr, *body = nullptr;
 	for (auto& c : node.children)
 	{
-		if (auto* l = dynamic_cast<LeafNode*>(c.get()))
+		if (const auto* l = dynamic_cast<LeafNode*>(c.get()))
 			if (l->type == "identifier")
+			{
 				name = l->value;
+			}
 		if (auto* i = dynamic_cast<InternalNode*>(c.get()))
 		{
 			if (i->ruleLhs == "param_list_opt" && !i->children.empty())
+			{
 				params = dynamic_cast<InternalNode*>(i->children[0].get());
+			}
 			if (i->ruleLhs == "block_stmt")
+			{
 				body = i;
+			}
 		}
 	}
 
-	auto prev = m_currentFunction;
+	const auto prev = m_currentFunction;
 	m_currentFunction = std::make_shared<Function>();
 	m_currentFunction->name = name;
 
@@ -364,7 +522,7 @@ void BytecodeGenerator::HandleFunctionDecl(InternalNode& node)
 		std::function<void(InternalNode*)> collect = [&](InternalNode* l) {
 			if (!l)
 				return;
-			int pIdx = (l->ruleLhs == "param_list") ? 0 : 1;
+			const int pIdx = (l->ruleLhs == "param_list") ? 0 : 1;
 			if (l->children.size() > pIdx)
 			{
 				if (auto* p = dynamic_cast<InternalNode*>(l->children[pIdx].get()))
@@ -380,7 +538,9 @@ void BytecodeGenerator::HandleFunctionDecl(InternalNode& node)
 	}
 
 	if (body)
+	{
 		body->Accept(*this);
+	}
 	CurrentChunk().Write(OpCode::OP_RETURN);
 
 	auto finished = m_currentFunction;
@@ -440,21 +600,66 @@ uint8_t BytecodeGenerator::CountAndEmitArgs(ASTNode* node)
 	if (!i)
 		return 0;
 
-	// arg_list_opt -> arg_list
 	if (i->ruleLhs == "arg_list_opt")
 		return i->children.empty() ? 0 : CountAndEmitArgs(i->children[0].get());
 
-	// arg_list = expression arg_list_tail
 	if (i->ruleLhs == "arg_list")
 	{
-		i->children[0]->Accept(*this); // Вычисляем аргумент и кладем на стек
+		i->children[0]->Accept(*this);
 		return 1 + (i->children.size() > 1 ? CountAndEmitArgs(i->children[1].get()) : 0);
 	}
-	// arg_list_tail = "," expression arg_list_tail
 	if (i->ruleLhs == "arg_list_tail" && i->children.size() >= 2)
 	{
-		i->children[1]->Accept(*this); // Вычисляем следующий аргумент
+		i->children[1]->Accept(*this);
 		return 1 + (i->children.size() > 2 ? CountAndEmitArgs(i->children[2].get()) : 0);
 	}
 	return 0;
+}
+
+void BytecodeGenerator::HandleIter(InternalNode& node)
+{
+	using namespace VM::Core;
+	std::string varName;
+	ASTNode *collection = nullptr, *body = nullptr;
+
+	for (auto& c : node.children)
+	{
+		if (const auto* leaf = dynamic_cast<LeafNode*>(c.get()))
+		{
+			if (leaf->type == "identifier")
+				varName = leaf->value;
+		}
+		if (auto* i = dynamic_cast<InternalNode*>(c.get()))
+		{
+			if (i->ruleLhs == "expression")
+			{
+				collection = i;
+			}
+			else if (i->ruleLhs == "block_stmt")
+			{
+				body = i;
+			}
+		}
+	}
+	collection->Accept(*this);
+	CurrentChunk().Write(OpCode::OP_MAKE_ITER);
+
+	const size_t loopStart = CurrentChunk().code.size();
+
+	CurrentChunk().Write(OpCode::OP_ITER_NEXT);
+	const size_t exitJumpAddr = CurrentChunk().code.size();
+	CurrentChunk().code.push_back(0xff);
+
+	const uint8_t varIdx = m_symbols.Define(varName);
+	CurrentChunk().Write(OpCode::OP_SET_LOCAL);
+	CurrentChunk().code.push_back(varIdx);
+
+	body->Accept(*this);
+
+	CurrentChunk().Write(OpCode::OP_LOOP);
+	CurrentChunk().code.push_back(static_cast<uint8_t>(loopStart));
+
+	CurrentChunk().code[exitJumpAddr] = static_cast<uint8_t>(CurrentChunk().code.size());
+
+	CurrentChunk().Write(OpCode::OP_POP);
 }
