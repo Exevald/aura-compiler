@@ -4,7 +4,12 @@ program = module_decl top_level_list | top_level_list ;
 module_decl = "module" qualified_id ";" ;
 
 top_level_list = top_level_node top_level_list | EPSILON ;
-top_level_node = import_decl | export_decl | declaration | effect_def | actor_decl | statement ;
+top_level_node = import_decl
+               | export_decl
+               | declaration
+               | effect_def
+               | actor_decl
+               | statement ;
 
 import_decl = "import" qualified_id import_as_opt ";" ;
 import_as_opt = "as" identifier | EPSILON ;
@@ -15,7 +20,14 @@ exportable = declaration_no_semi | effect_def_no_semi | actor_decl_no_semi | ide
 qualified_id = identifier qualified_id_tail ;
 qualified_id_tail = "." identifier qualified_id_tail | EPSILON ;
 
-declaration = var_decl | const_decl | func_decl | type_alias | struct_decl | enum_decl | interface_decl ;
+declaration = var_decl
+            | const_decl
+            | type_alias
+            | func_decl
+            | struct_decl
+            | enum_decl
+            | interface_decl ;
+
 declaration_no_semi = var_decl_no_semi | const_decl_no_semi | func_decl | type_alias_no_semi | struct_decl_no_semi | enum_decl_no_semi | interface_decl_no_semi ;
 
 var_decl = var_decl_no_semi ";" ;
@@ -35,19 +47,19 @@ func_decl = "fn" identifier type_params_opt "(" param_list_opt ")" type_guide_op
 type_alias = type_alias_no_semi ";" ;
 type_alias_no_semi = "type" identifier type_params_opt "=" dataType ;
 
-struct_decl = struct_decl_no_semi | struct_decl_no_semi ";" ;
+struct_decl = struct_decl_no_semi ;
 struct_decl_no_semi = "struct" identifier type_params_opt "{" field_decl_list "}" contract_list ;
 field_decl_list = field_decl field_decl_list | EPSILON ;
 field_decl = identifier ":" dataType ";" ;
 
-enum_decl = enum_decl_no_semi | enum_decl_no_semi ";" ;
+enum_decl = enum_decl_no_semi ;
 enum_decl_no_semi = "enum" identifier type_params_opt "{" variant_list "}" ;
 variant_list = variant_decl variant_list_tail ;
 variant_list_tail = "|" variant_decl variant_list_tail | EPSILON ;
 variant_decl = identifier variant_args_opt ;
 variant_args_opt = "(" dataType_list ")" | EPSILON ;
 
-interface_decl = interface_decl_no_semi | interface_decl_no_semi ";" ;
+interface_decl = interface_decl_no_semi ;
 interface_decl_no_semi = "interface" identifier type_params_opt "{" method_sig_list "}" ;
 method_sig_list = method_sig method_sig_list | EPSILON ;
 method_sig = "fn" identifier "(" param_list_opt ")" type_guide_opt effect_spec_opt ";" ;
@@ -96,11 +108,11 @@ multiplicative = unary multiplicative_tail ;
 multiplicative_tail = "*" unary multiplicative_tail | "/" unary multiplicative_tail | "mod" unary multiplicative_tail | "div" unary multiplicative_tail | EPSILON ;
 
 unary = primary | unary_op unary ;
-unary_op = "+" | "-" | "not" | "!" ;
+unary_op = "+" | "-" | "not" | "!" | "*" ;
 
-primary = "(" expression ")" | "true" | "false" | "null" | integer_literal | float_literal | string_literal | identifier_expr | arrow_func | array_lit | "comptime" block_stmt ;
+primary = "(" expression ")" | "true" | "false" | "null" | "return" | integer_literal | float_literal | string_literal | identifier_expr | arrow_func | array_lit | "comptime" block_stmt ;
 
-identifier_expr = identifier type_args_opt trailer_list ;
+identifier_expr = identifier trailer_list ;
 trailer_list = trailer trailer_list | EPSILON ;
 trailer = "." identifier | "(" arg_list_opt ")" | "[" expression "]" ;
 
@@ -113,18 +125,23 @@ param_list = parameter param_list_tail ;
 param_list_tail = "," parameter param_list_tail | EPSILON ;
 parameter = identifier type_guide_opt assign_expr_opt ;
 
-statement = block_stmt | simple_stmt ";" ;
-simple_stmt = var_decl_no_semi
-            | const_decl_no_semi
-            | return_stmt
-            | if_stmt
-            | while_stmt
-            | iter_stmt
-            | handle_stmt
-            | transaction_stmt
-            | unsafe_stmt
-            | print_stmt
-            | expression ;
+statement = statement_no_semi
+          | statement_with_semi ";"
+          | ";" ;
+
+statement_no_semi = block_stmt
+                  | if_stmt
+                  | while_stmt
+                  | iter_stmt
+                  | handle_stmt
+                  | transaction_stmt
+                  | unsafe_stmt ;
+
+statement_with_semi = var_decl_no_semi
+                    | const_decl_no_semi
+                    | return_stmt
+                    | print_stmt
+                    | expression ;
 
 block_stmt = "{" statement_list "}" ;
 statement_list = statement statement_list | EPSILON ;
@@ -168,11 +185,11 @@ effect_type = identifier type_args_opt ;
 contract_list = contract contract_list | EPSILON ;
 contract = "requires" "(" expression ")" | "ensures" "(" expression ")" | "invariant" "(" expression ")" ;
 
-effect_def = effect_def_no_semi | effect_def_no_semi ";" ;
+effect_def = effect_def_no_semi ;
 effect_def_no_semi = "effect" identifier effect_body_opt ;
 effect_body_opt = "{" method_sig_list "}" | EPSILON ;
 
-actor_decl = actor_decl_no_semi | actor_decl_no_semi ";" ;
+actor_decl = actor_decl_no_semi ;
 actor_decl_no_semi = "actor" identifier type_params_opt "{" actor_body "}" ;
 actor_body = actor_field_list actor_method_list ;
 actor_field_list = actor_field actor_field_list | EPSILON ;
