@@ -6,6 +6,13 @@
 namespace VM::Core
 {
 
+enum class OperandSize
+{
+	None,
+	Uint8,
+	Uint16
+};
+
 enum class OpCode : uint8_t
 {
 	OP_CONSTANT = 0x01,
@@ -160,6 +167,40 @@ constexpr bool OpCodeHasOperand(const OpCode opcode)
 		return true;
 	default:
 		return false;
+	}
+}
+
+constexpr OperandSize GetOperandSize(const OpCode opcode)
+{
+	using enum OpCode;
+	switch (opcode)
+	{
+	case OP_JUMP:
+	case OP_JUMP_IF_FALSE:
+	case OP_JUMP_IF_TRUE:
+	case OP_LOOP:
+		return OperandSize::Uint16;
+
+	case OP_CONSTANT:
+	case OP_DEFINE_GLOBAL:
+	case OP_GET_GLOBAL:
+	case OP_SET_GLOBAL:
+	case OP_GET_LOCAL:
+	case OP_SET_LOCAL:
+	case OP_CALL:
+	case OP_BUILD_ARRAY:
+	case OP_BUILD_STRUCT:
+	case OP_MEMBER_GET:
+	case OP_MEMBER_SET:
+	case OP_BUILD_ENUM:
+	case OP_GET_ENUM_ARG:
+	case OP_ADDR_LOCAL:
+	case OP_ADDR_GLOBAL:
+	case OP_ITER_NEXT:
+		return OperandSize::Uint8;
+
+	default:
+		return OperandSize::None;
 	}
 }
 

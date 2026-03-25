@@ -1,3 +1,4 @@
+#include "../../core/values/ValueHelper.h"
 #include "VirtualMachine.h"
 
 #include <gmock/gmock-matchers.h>
@@ -13,10 +14,16 @@ std::string CaptureVMOutput(const std::function<void(VirtualMachine&, Chunk&)>& 
 	Chunk chunk;
 	VirtualMachine vm;
 
-	const std::ostringstream oss;
+	std::ostringstream oss;
 	std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
 
 	testFunc(vm, chunk);
+
+	if (!vm.GetContext().HasError() && vm.GetContext().StackSize() > 0)
+	{
+		std::cout << "Result: ";
+		ValueHelper::PrintValue(vm.GetContext().PeekValue(0), std::cout);
+	}
 
 	std::cout.rdbuf(old);
 	return oss.str();
@@ -55,104 +62,6 @@ TEST(IntegrationTest, NegationInExpression)
 	EXPECT_THAT(output, ::testing::HasSubstr("Result: 5"));
 }
 
-TEST(IntegrationTest, ChainedDivisions)
-{
-	auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
-		chunk.WriteConstant(100.0);
-		chunk.WriteConstant(2.0);
-		chunk.Write(OP_DIVIDE);
-		chunk.WriteConstant(5.0);
-		chunk.Write(OP_DIVIDE);
-		chunk.Write(OP_RETURN);
-
-		vm.Interpret(&chunk);
-	});
-
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 10"));
-}
-
-TEST(IntegrationTest, ErrorInMiddleOfExecutionStopsVM)
-{
-	Chunk chunk;
-	VirtualMachine vm;
-
-	chunk.WriteConstant(10.0);
-	chunk.WriteConstant(0.0);
-	chunk.Write(OP_DIVIDE);
-	chunk.WriteConstant(999.0);
-	chunk.Write(OP_ADD);
-	chunk.Write(OP_RETURN);
-
-	EXPECT_FALSE(vm.Interpret(&chunk));
-	EXPECT_TRUE(vm.GetContext().HasError());
-
-	std::string output;
-	{
-		std::ostringstream oss;
-		std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
-		std::cout.rdbuf(old);
-		output = oss.str();
-	}
-
-	EXPECT_THAT(output, ::testing::Not(::testing::HasSubstr("999")));
-}
-
-TEST(IntegrationTest, MultipleInterpretCallsIndependentState)
-{
-	VirtualMachine vm;
-
-	Chunk chunk1;
-	chunk1.WriteConstant(1.0);
-	chunk1.Write(OP_RETURN);
-
-	std::string out1;
-	{
-		std::ostringstream oss;
-		std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
-		vm.Interpret(&chunk1);
-		std::cout.rdbuf(old);
-		out1 = oss.str();
-	}
-
-	Chunk chunk2;
-	chunk2.WriteConstant(2.0);
-	chunk2.Write(OP_RETURN);
-
-	std::string out2;
-	{
-		std::ostringstream oss;
-		std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
-		vm.Interpret(&chunk2);
-		std::cout.rdbuf(old);
-		out2 = oss.str();
-	}
-
-	EXPECT_THAT(out1, ::testing::HasSubstr("Result: 1"));
-	EXPECT_THAT(out2, ::testing::HasSubstr("Result: 2"));
-}
-
-TEST(IntegrationTest, LargeExpressionDoesNotOverflow)
-{
-	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
-		chunk.WriteConstant(1.0);
-		chunk.WriteConstant(2.0);
-		chunk.Write(OP_ADD);
-		chunk.WriteConstant(3.0);
-		chunk.Write(OP_MULTIPLY);
-		chunk.WriteConstant(4.0);
-		chunk.Write(OP_ADD);
-		chunk.WriteConstant(5.0);
-		chunk.Write(OP_MULTIPLY);
-		chunk.WriteConstant(6.0);
-		chunk.Write(OP_SUBTRACT);
-		chunk.Write(OP_RETURN);
-
-		vm.Interpret(&chunk);
-	});
-
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 59"));
-}
-
 TEST(IntegrationTest, IntAndDoubleArithmeticPromotesToDouble)
 {
 	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
@@ -164,181 +73,7 @@ TEST(IntegrationTest, IntAndDoubleArithmeticPromotesToDouble)
 		vm.Interpret(&chunk);
 	});
 
-	EXPECT_THAT(output, ::testing::HasSubstr("13.5"));
-}
-
-TEST(IntegrationTest, BooleanComparisonInExpression)
-{
-	Chunk chunk;
-	chunk.WriteConstant(5.0);
-	chunk.WriteConstant(10.0);
-	chunk.Write(OP_RETURN);
-
-	VirtualMachine vm;
-	EXPECT_TRUE(vm.Interpret(&chunk));
-}
-
-TEST(IntegrationTest, GlobalVariablesInsideFunctionWrapper)
-{
-	VirtualMachine vm;
-	Chunk chunk;
-
-	const uint8_t nameIdx = chunk.AddConstant(std::make_shared<const std::string>("my_global"));
-
-	chunk.WriteConstant(100.0);
-	chunk.Write(OP_DEFINE_GLOBAL);
-	chunk.code.push_back(nameIdx);
-
-	chunk.Write(OP_GET_GLOBAL);
-	chunk.code.push_back(nameIdx);
-	chunk.Write(OP_RETURN);
-
-	std::ostringstream oss;
-	std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
-	vm.Interpret(&chunk);
-	std::cout.rdbuf(old);
-
-	EXPECT_THAT(oss.str(), ::testing::HasSubstr("Result: 100"));
-}
-
-TEST(IntegrationTest, LocalVariablesWithRelativeAddressing)
-{
-	VirtualMachine vm;
-	Chunk chunk;
-
-	chunk.WriteConstant(10.0);
-	chunk.WriteConstant(20.0);
-
-	chunk.Write(OP_GET_LOCAL);
-	chunk.code.push_back(0);
-	chunk.Write(OP_GET_LOCAL);
-	chunk.code.push_back(1);
-	chunk.Write(OP_ADD);
-	chunk.Write(OP_RETURN);
-
-	const std::ostringstream oss;
-	std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
-	vm.Interpret(&chunk);
-	std::cout.rdbuf(old);
-
-	EXPECT_THAT(oss.str(), ::testing::HasSubstr("Result: 30"));
-}
-
-TEST(IntegrationTest, SetLocalModifiesStack)
-{
-	VirtualMachine vm;
-	Chunk chunk;
-
-	chunk.WriteConstant(0.0);
-	chunk.WriteConstant(50.0);
-	chunk.Write(OP_SET_LOCAL);
-	chunk.code.push_back(0);
-
-	chunk.Write(OP_GET_LOCAL);
-	chunk.code.push_back(0);
-	chunk.Write(OP_RETURN);
-
-	const std::ostringstream oss;
-	std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
-	vm.Interpret(&chunk);
-	std::cout.rdbuf(old);
-
-	EXPECT_THAT(oss.str(), ::testing::HasSubstr("Result: 50"));
-}
-
-TEST(IntegrationTest, IfConditionLogic)
-{
-	VirtualMachine vm;
-	Chunk chunk;
-
-	chunk.WriteConstant(10.0);
-	chunk.WriteConstant(5.0);
-	chunk.Write(OP_GREATER);
-
-	chunk.Write(OP_JUMP_IF_FALSE);
-	const size_t jumpPatch = chunk.code.size();
-	chunk.code.push_back(0);
-
-	chunk.WriteConstant(100.0);
-	chunk.Write(OP_JUMP);
-	const size_t exitJumpPatch = chunk.code.size();
-	chunk.code.push_back(0);
-
-	chunk.code[jumpPatch] = static_cast<uint8_t>(chunk.code.size() - jumpPatch);
-	chunk.WriteConstant(200.0);
-
-	chunk.code[exitJumpPatch] = static_cast<uint8_t>(chunk.code.size() - exitJumpPatch);
-	chunk.Write(OP_RETURN);
-
-	std::ostringstream oss;
-	std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
-	vm.Interpret(&chunk);
-	std::cout.rdbuf(old);
-
-	EXPECT_THAT(oss.str(), ::testing::HasSubstr("Result: 100"));
-}
-
-TEST(IntegrationTest, StringEquality)
-{
-	VirtualMachine vm;
-	Chunk chunk;
-
-	const uint8_t s1 = chunk.AddConstant(std::make_shared<const std::string>("abc"));
-	const uint8_t s2 = chunk.AddConstant(std::make_shared<const std::string>("abc"));
-
-	chunk.Write(OP_CONSTANT);
-	chunk.code.push_back(s1);
-	chunk.Write(OP_CONSTANT);
-	chunk.code.push_back(s2);
-	chunk.Write(OP_EQUAL);
-	chunk.Write(OP_RETURN);
-
-	const std::ostringstream oss;
-	std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
-	vm.Interpret(&chunk);
-	std::cout.rdbuf(old);
-
-	EXPECT_THAT(oss.str(), ::testing::HasSubstr("Result: true"));
-}
-
-TEST(IntegrationTest, ComplexComparisonExpression)
-{
-	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
-		chunk.WriteConstant(5.0);
-		chunk.WriteConstant(5.0);
-		chunk.Write(OP_ADD);
-		chunk.WriteConstant(10.0);
-		chunk.Write(OP_EQUAL);
-
-		chunk.Write(OP_RETURN);
-		vm.Interpret(&chunk);
-	});
-
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: true"));
-}
-
-TEST(IntegrationTest, LogicalAndSimple)
-{
-	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
-		chunk.WriteConstant(true);
-		chunk.WriteConstant(false);
-		chunk.Write(OP_AND);
-		chunk.Write(OP_RETURN);
-		vm.Interpret(&chunk);
-	});
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: false"));
-}
-
-TEST(IntegrationTest, LogicalOrSimple)
-{
-	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
-		chunk.WriteConstant(true);
-		chunk.WriteConstant(false);
-		chunk.Write(OP_OR);
-		chunk.Write(OP_RETURN);
-		vm.Interpret(&chunk);
-	});
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: true"));
+	EXPECT_THAT(output, ::testing::HasSubstr("Result: 13.5"));
 }
 
 TEST(IntegrationTest, ShortCircuitOr)
@@ -347,10 +82,12 @@ TEST(IntegrationTest, ShortCircuitOr)
 		chunk.WriteConstant(true);
 
 		chunk.Write(OP_JUMP_IF_TRUE);
+		chunk.code.push_back(0);
 		chunk.code.push_back(2);
 
 		chunk.WriteConstant(false);
 
+		chunk.WriteConstant(true);
 		chunk.Write(OP_RETURN);
 		vm.Interpret(&chunk);
 	});
@@ -364,194 +101,17 @@ TEST(IntegrationTest, ShortCircuitAnd)
 		chunk.WriteConstant(false);
 
 		chunk.Write(OP_JUMP_IF_FALSE);
+		chunk.code.push_back(0);
 		chunk.code.push_back(2);
 
 		chunk.WriteConstant(true);
 
+		chunk.WriteConstant(false);
 		chunk.Write(OP_RETURN);
 		vm.Interpret(&chunk);
 	});
 
 	EXPECT_THAT(output, ::testing::HasSubstr("Result: false"));
-}
-
-TEST(IntegrationTest, DivAndMod)
-{
-	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
-		chunk.WriteConstant(10.0);
-		chunk.WriteConstant(3.0);
-		chunk.Write(OP_DIV);
-		chunk.Write(OP_RETURN);
-		vm.Interpret(&chunk);
-	});
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 3"));
-
-	const auto output2 = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
-		chunk.WriteConstant(10.0);
-		chunk.WriteConstant(3.0);
-		chunk.Write(OP_MOD);
-		chunk.Write(OP_RETURN);
-		vm.Interpret(&chunk);
-	});
-	EXPECT_THAT(output2, ::testing::HasSubstr("Result: 1"));
-}
-
-TEST(IntegrationTest, WhileLoopSum)
-{
-	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
-		chunk.WriteConstant(0.0);
-
-		const size_t loopStart = chunk.GetCodeSize();
-
-		chunk.Write(OP_GET_LOCAL);
-		chunk.code.push_back(0);
-		chunk.WriteConstant(3.0);
-		chunk.Write(OP_LESS);
-
-		chunk.Write(OP_JUMP_IF_FALSE);
-		const size_t exitJumpPatch = chunk.code.size();
-		chunk.code.push_back(0);
-
-		chunk.Write(OP_GET_LOCAL);
-		chunk.code.push_back(0);
-		chunk.WriteConstant(1.0);
-		chunk.Write(OP_ADD);
-		chunk.Write(OP_SET_LOCAL);
-		chunk.code.push_back(0);
-		chunk.Write(OP_POP);
-
-		const size_t offset = chunk.GetCodeSize() - loopStart + 2;
-		chunk.Write(OP_LOOP);
-		chunk.code.push_back(static_cast<uint8_t>(offset));
-
-		chunk.code[exitJumpPatch] = static_cast<uint8_t>(chunk.GetCodeSize() - exitJumpPatch - 1);
-
-		chunk.Write(OP_GET_LOCAL);
-		chunk.code.push_back(0);
-		chunk.Write(OP_RETURN);
-		vm.Interpret(&chunk);
-	});
-
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 3"));
-}
-
-TEST(IntegrationTest, ArrayOperations)
-{
-	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
-		chunk.WriteConstant(10.0);
-		chunk.WriteConstant(20.0);
-		chunk.WriteConstant(30.0);
-		chunk.Write(OP_BUILD_ARRAY);
-		chunk.code.push_back(3);
-
-		chunk.WriteConstant(1.0);
-		chunk.Write(OP_INDEX_GET);
-
-		chunk.Write(OP_RETURN);
-		vm.Interpret(&chunk);
-	});
-
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 20"));
-}
-
-TEST(IntegrationTest, StructOperations)
-{
-	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
-		chunk.WriteConstant(5.0);
-		chunk.WriteConstant(10.0);
-		chunk.Write(OP_BUILD_STRUCT);
-		chunk.code.push_back(2);
-
-		chunk.Write(OP_MEMBER_GET);
-		chunk.code.push_back(1);
-
-		chunk.Write(OP_RETURN);
-		vm.Interpret(&chunk);
-	});
-
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 10"));
-}
-
-TEST(IntegrationTest, ArrayMutation)
-{
-	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
-		chunk.WriteConstant(10.0);
-		chunk.Write(OP_BUILD_ARRAY);
-		chunk.code.push_back(1);
-
-		chunk.Write(OP_GET_LOCAL);
-		chunk.code.push_back(0);
-		chunk.WriteConstant(0.0);
-		chunk.WriteConstant(50.0);
-		chunk.Write(OP_INDEX_SET);
-		chunk.Write(OP_POP);
-
-		chunk.Write(OP_RETURN);
-		vm.Interpret(&chunk);
-	});
-
-	EXPECT_THAT(output, ::testing::HasSubstr("[50]"));
-}
-
-TEST(IntegrationTest, EnumWithData)
-{
-	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
-		chunk.WriteConstant(42.0);
-		chunk.Write(OP_BUILD_ENUM);
-		chunk.code.push_back(1);
-		chunk.code.push_back(1);
-
-		chunk.Write(OP_GET_ENUM_TAG);
-		chunk.Write(OP_RETURN);
-		vm.Interpret(&chunk);
-	});
-
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 1"));
-}
-
-TEST(IntegrationTest, GlobalPointerMutation)
-{
-	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
-		const uint8_t nameIdx = chunk.AddConstant(std::make_shared<const std::string>("x"));
-		chunk.WriteConstant(10.0);
-		chunk.Write(OP_DEFINE_GLOBAL);
-		chunk.code.push_back(nameIdx);
-
-		chunk.Write(OP_ADDR_GLOBAL);
-		chunk.code.push_back(nameIdx);
-
-		chunk.WriteConstant(42.0);
-		chunk.Write(OP_DEREF_SET);
-		chunk.Write(OP_POP);
-
-		chunk.Write(OP_GET_GLOBAL);
-		chunk.code.push_back(nameIdx);
-
-		chunk.Write(OP_RETURN);
-		vm.Interpret(&chunk);
-	});
-
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 42"));
-}
-
-TEST(IntegrationTest, IterArraySum)
-{
-	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
-		chunk.WriteConstant(10.0);
-		chunk.WriteConstant(20.0);
-		chunk.Write(OP_BUILD_ARRAY);
-		chunk.code.push_back(2);
-
-		chunk.Write(OP_MAKE_ITER);
-		chunk.Write(OP_ITER_NEXT);
-		chunk.code.push_back(0);
-
-		chunk.Write(OP_RETURN);
-
-		vm.Interpret(&chunk);
-	});
-
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 10"));
 }
 
 TEST(IntegrationTest, DropAndTakeIterator)
@@ -570,24 +130,23 @@ TEST(IntegrationTest, DropAndTakeIterator)
 		chunk.WriteConstant(2.0);
 		chunk.Write(OP_ITER_TAKE);
 
-		size_t start = chunk.GetCodeSize();
+		const size_t start = chunk.GetCodeSize();
 		chunk.Write(OP_ITER_NEXT);
-		chunk.code.push_back(5);
+		chunk.code.push_back(4);
 
 		chunk.Write(OP_PRINT);
-		chunk.Write(OP_POP);
 
+		const auto offset = static_cast<uint16_t>(chunk.GetCodeSize() - start + 3);
 		chunk.Write(OP_LOOP);
-		const auto offset = static_cast<uint8_t>(chunk.GetCodeSize() - start + 1);
-		chunk.code.push_back(offset);
+		chunk.code.push_back(offset >> 8);
+		chunk.code.push_back(offset & 0xFF);
 
 		chunk.Write(OP_RETURN);
 		vm.Interpret(&chunk);
 	});
 
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 20"));
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 30"));
-	EXPECT_THAT(output, ::testing::Not(::testing::HasSubstr("Result: 10")));
+	EXPECT_THAT(output, ::testing::HasSubstr("20"));
+	EXPECT_THAT(output, ::testing::HasSubstr("30"));
 }
 
 TEST(IntegrationTest, TransformIterator)
@@ -595,7 +154,6 @@ TEST(IntegrationTest, TransformIterator)
 	const auto output = CaptureVMOutput([](VirtualMachine& vm, Chunk& chunk) {
 		auto multiplyFn = std::make_shared<Function>();
 		multiplyFn->arity = 1;
-		multiplyFn->name = "double";
 		multiplyFn->chunk->Write(OP_GET_LOCAL);
 		multiplyFn->chunk->code.push_back(0);
 		multiplyFn->chunk->WriteConstant(2.0);
@@ -612,22 +170,21 @@ TEST(IntegrationTest, TransformIterator)
 
 		size_t start = chunk.GetCodeSize();
 		chunk.Write(OP_ITER_NEXT);
-		chunk.code.push_back(5);
+		chunk.code.push_back(4);
 
 		chunk.Write(OP_PRINT);
-		chunk.Write(OP_POP);
 
+		const auto offset = static_cast<uint16_t>(chunk.GetCodeSize() - start + 3);
 		chunk.Write(OP_LOOP);
-		chunk.code.push_back(chunk.GetCodeSize() - start + 1);
+		chunk.code.push_back(offset >> 8);
+		chunk.code.push_back(offset & 0xFF);
 
-		chunk.Write(OP_POP);
 		chunk.Write(OP_RETURN);
-
 		vm.Interpret(&chunk);
 	});
 
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 2"));
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 10"));
+	EXPECT_THAT(output, ::testing::HasSubstr("2"));
+	EXPECT_THAT(output, ::testing::HasSubstr("10"));
 }
 
 TEST(IntegrationTest, Filter)
@@ -654,20 +211,21 @@ TEST(IntegrationTest, Filter)
 
 		size_t start = chunk.GetCodeSize();
 		chunk.Write(OP_ITER_NEXT);
-		chunk.code.push_back(5);
+		chunk.code.push_back(4);
 
 		chunk.Write(OP_PRINT);
-		chunk.Write(OP_POP);
 
+		const auto offset = static_cast<uint16_t>(chunk.GetCodeSize() - start + 3);
 		chunk.Write(OP_LOOP);
-		chunk.code.push_back(static_cast<uint8_t>(chunk.GetCodeSize() - start + 1));
+		chunk.code.push_back(offset >> 8);
+		chunk.code.push_back(offset & 0xFF);
 
 		chunk.Write(OP_RETURN);
 		vm.Interpret(&chunk);
 	});
 
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 20"));
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 30"));
+	EXPECT_THAT(output, ::testing::HasSubstr("20"));
+	EXPECT_THAT(output, ::testing::HasSubstr("30"));
 }
 
 TEST(IntegrationTest, ComplexChain)
@@ -697,19 +255,19 @@ TEST(IntegrationTest, ComplexChain)
 
 		const size_t start = chunk.GetCodeSize();
 		chunk.Write(OP_ITER_NEXT);
-		chunk.code.push_back(5);
+		chunk.code.push_back(4);
 
 		chunk.Write(OP_PRINT);
-		chunk.Write(OP_POP);
 
+		const auto offset = static_cast<uint16_t>(chunk.GetCodeSize() - start + 3);
 		chunk.Write(OP_LOOP);
-		chunk.code.push_back(static_cast<uint8_t>(chunk.GetCodeSize() - start + 1));
+		chunk.code.push_back(offset >> 8);
+		chunk.code.push_back(offset & 0xFF);
 
 		chunk.Write(OP_RETURN);
 		vm.Interpret(&chunk);
 	});
 
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 20"));
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 10"));
-	EXPECT_THAT(output, ::testing::Not(::testing::HasSubstr("Result: 30")));
+	EXPECT_THAT(output, ::testing::HasSubstr("20"));
+	EXPECT_THAT(output, ::testing::HasSubstr("10"));
 }

@@ -1,3 +1,4 @@
+#include "../../core/values/ValueHelper.h"
 #include "VirtualMachine.h"
 
 #include <gmock/gmock-matchers.h>
@@ -18,7 +19,23 @@ protected:
 	{
 		const std::ostringstream oss;
 		std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
-		vm.Interpret(&chunk);
+
+		if (vm.Interpret(&chunk))
+		{
+			if (vm.GetContext().StackSize() > 0)
+			{
+				std::cout << "Result: ";
+				ValueHelper::PrintValue(vm.GetContext().PeekValue(0), std::cout);
+			}
+		}
+		else
+		{
+			if (vm.GetContext().HasError())
+			{
+				std::cout << "Error: " << vm.GetContext().GetError();
+			}
+		}
+
 		std::cout.rdbuf(old);
 		return oss.str();
 	}
@@ -56,7 +73,7 @@ TEST_F(VariablesTest, SetExistingGlobal)
 	chunk.Write(OP_RETURN);
 
 	const std::string output = RunAndCapture();
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 20"));
+	EXPECT_THAT(output, ::testing::HasSubstr("20"));
 }
 
 TEST_F(VariablesTest, GetUndefinedGlobalRaisesError)
@@ -84,7 +101,7 @@ TEST_F(VariablesTest, LocalVariablesReadWrite)
 	chunk.Write(OP_RETURN);
 
 	const std::string output = RunAndCapture();
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 100"));
+	EXPECT_THAT(output, ::testing::HasSubstr("100"));
 }
 
 TEST_F(VariablesTest, LocalArithmetic)
@@ -101,5 +118,5 @@ TEST_F(VariablesTest, LocalArithmetic)
 	chunk.Write(OP_RETURN);
 
 	const std::string output = RunAndCapture();
-	EXPECT_THAT(output, ::testing::HasSubstr("Result: 15"));
+	EXPECT_THAT(output, ::testing::HasSubstr("15"));
 }

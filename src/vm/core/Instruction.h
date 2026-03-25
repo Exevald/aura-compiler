@@ -8,9 +8,9 @@ namespace VM::Core {
 
 struct Instruction {
 	OpCode opcode;
-	uint8_t operand;
+	uint16_t operand;
 
-	constexpr explicit Instruction(OpCode op, uint8_t arg = 0)
+	constexpr explicit Instruction(OpCode op, uint16_t arg = 0)
 		: opcode(op), operand(arg) {}
 };
 

@@ -1,3 +1,4 @@
+#include "../../core/values/ValueHelper.h"
 #include "VirtualMachine.h"
 
 #include <gmock/gmock-matchers.h>
@@ -16,9 +17,23 @@ protected:
 
 	std::string RunAndCapture(const Chunk& chunk)
 	{
-		std::ostringstream oss;
+		const std::ostringstream oss;
 		std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
-		vm.Interpret(&chunk);
+
+		if (vm.Interpret(&chunk))
+		{
+			if (vm.GetContext().StackSize() > 0)
+			{
+				std::cout << "Result: ";
+				const auto val = vm.GetContext().PeekValue(0);
+				ValueHelper::PrintValue(val, std::cout);
+			}
+		}
+		else if (vm.GetContext().HasError())
+		{
+			std::cout << "Error: " << vm.GetContext().GetError();
+		}
+
 		std::cout.rdbuf(old);
 		return oss.str();
 	}
@@ -100,41 +115,41 @@ TEST_F(VMFunctionTest, NestedFunctionCalls)
 	EXPECT_THAT(output, ::testing::HasSubstr("Result: 18"));
 }
 
-TEST_F(VMFunctionTest, RecursiveFactorial)
+TEST_F(VMFunctionTest, RecursiveSum)
 {
-	auto factFunc = std::make_shared<Function>();
-	factFunc->name = "factorial";
-	factFunc->arity = 1;
+	auto recFunc = std::make_shared<Function>();
+	recFunc->name = "recursiveSum";
+	recFunc->arity = 1;
 
-	factFunc->chunk->Write(OP_GET_LOCAL);
-	factFunc->chunk->code.push_back(0);
+	recFunc->chunk->Write(OP_GET_LOCAL);
+	recFunc->chunk->code.push_back(0);
 
-	factFunc->chunk->Write(OP_JUMP_IF_FALSE);
-	factFunc->chunk->code.push_back(17);
+	recFunc->chunk->Write(OP_JUMP_IF_FALSE);
+	recFunc->chunk->code.push_back(0);
+	recFunc->chunk->code.push_back(13);
 
-	factFunc->chunk->WriteConstant(factFunc);
-	factFunc->chunk->Write(OP_GET_LOCAL);
-	factFunc->chunk->code.push_back(0);
-	factFunc->chunk->WriteConstant(1.0);
-	factFunc->chunk->Write(OP_SUBTRACT);
-	factFunc->chunk->Write(OP_CALL);
-	factFunc->chunk->code.push_back(1);
+	recFunc->chunk->WriteConstant(recFunc);
+	recFunc->chunk->Write(OP_GET_LOCAL);
+	recFunc->chunk->code.push_back(0);
+	recFunc->chunk->WriteConstant(1.0);
+	recFunc->chunk->Write(OP_SUBTRACT);
+	recFunc->chunk->Write(OP_CALL);
+	recFunc->chunk->code.push_back(1);
+	recFunc->chunk->Write(OP_GET_LOCAL);
+	recFunc->chunk->code.push_back(0);
+	recFunc->chunk->Write(OP_ADD);
+	recFunc->chunk->Write(OP_RETURN);
 
-	factFunc->chunk->Write(OP_GET_LOCAL);
-	factFunc->chunk->code.push_back(0);
-	factFunc->chunk->Write(OP_ADD);
-	factFunc->chunk->Write(OP_RETURN);
-
-	factFunc->chunk->WriteConstant(0.0);
-	factFunc->chunk->Write(OP_RETURN);
+	recFunc->chunk->WriteConstant(0.0);
+	recFunc->chunk->Write(OP_RETURN);
 
 	Chunk mainChunk;
-	mainChunk.WriteConstant(factFunc);
+	mainChunk.WriteConstant(recFunc);
 	mainChunk.WriteConstant(5.0);
 	mainChunk.Write(OP_CALL);
 	mainChunk.code.push_back(1);
 	mainChunk.Write(OP_RETURN);
 
-	std::string output = RunAndCapture(mainChunk);
+	const std::string output = RunAndCapture(mainChunk);
 	EXPECT_THAT(output, ::testing::HasSubstr("Result: 15"));
 }

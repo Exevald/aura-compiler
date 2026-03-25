@@ -38,9 +38,28 @@ protected:
 
 	std::string RunAndCapture(Chunk& chunk)
 	{
-		return CaptureOutput([&] {
-			vm.Interpret(&chunk);
-		});
+		std::ostringstream oss;
+		std::streambuf* old = std::cout.rdbuf(oss.rdbuf());
+
+		if (vm.Interpret(&chunk))
+		{
+			if (vm.GetContext().StackSize() > 0)
+			{
+				std::cout << "Result: ";
+				auto val = vm.GetContext().PeekValue(0);
+				VM::Core::ValueHelper::PrintValue(val, std::cout);
+			}
+		}
+		else
+		{
+			if (vm.GetContext().HasError())
+			{
+				std::cout << "Error: " << vm.GetContext().GetError();
+			}
+		}
+
+		std::cout.rdbuf(old);
+		return oss.str();
 	}
 };
 
@@ -194,6 +213,7 @@ TEST_F(VirtualMachineTest, JumpUpdatesIP)
 	Chunk chunk;
 	chunk.Write(OP_JUMP);
 	chunk.code.push_back(0);
+	chunk.code.push_back(0);
 	chunk.Write(OP_RETURN);
 
 	EXPECT_NO_THROW(vm.Interpret(&chunk));
@@ -214,7 +234,8 @@ TEST_F(VirtualMachineTest, MaxStepsEnforcesTimeout)
 {
 	Chunk chunk;
 	chunk.Write(OP_LOOP);
-	chunk.code.push_back(2);
+	chunk.code.push_back(0);
+	chunk.code.push_back(3);
 
 	vm.SetMaxSteps(100);
 	EXPECT_EQ(vm.Interpret(&chunk), false);

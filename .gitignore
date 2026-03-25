@@ -239,6 +239,7 @@ samples/01-basics/string-joiner/out.txt
 # CLION files
 
 cmake-build-debug/
+cmake-build-debug-coverage/
 *.idea
 
 # BASH file

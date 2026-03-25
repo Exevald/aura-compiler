@@ -5,32 +5,6 @@
 #include <iostream>
 #include <utility>
 
-namespace
-{
-
-std::string ValueToString(const VM::Core::Value& value)
-{
-	if (std::holds_alternative<long long>(value))
-	{
-		return std::to_string(std::get<long long>(value));
-	}
-	if (std::holds_alternative<double>(value))
-	{
-		return std::to_string(std::get<double>(value));
-	}
-	if (std::holds_alternative<bool>(value))
-	{
-		return std::get<bool>(value) ? "true" : "false";
-	}
-	if (std::holds_alternative<std::shared_ptr<const std::string>>(value))
-	{
-		return *std::get<std::shared_ptr<const std::string>>(value);
-	}
-	return "";
-}
-
-} // namespace
-
 namespace VM::Execution
 {
 
@@ -41,7 +15,9 @@ VirtualMachine::VirtualMachine() = default;
 bool VirtualMachine::Interpret(const Chunk* chunk)
 {
 	if (!chunk)
+	{
 		return false;
+	}
 
 	m_context.ClearStack();
 	m_context.ClearError();
@@ -99,13 +75,18 @@ ExecutionResult VirtualMachine::Run()
 
 			uint8_t byte = frame.function->chunk->GetCode()[frame.ip++];
 			const auto opcode = static_cast<Core::OpCode>(byte);
-			uint8_t operand = 0;
-			if (Core::OpCodeHasOperand(opcode))
+			uint16_t operand = 0;
+
+			if (const auto opSize = Core::GetOperandSize(opcode);
+				opSize == Core::OperandSize::Uint8)
 			{
-				if (frame.ip < frame.function->chunk->GetCodeSize())
-				{
-					operand = frame.function->chunk->GetCode()[frame.ip++];
-				}
+				operand = frame.function->chunk->GetCode()[frame.ip++];
+			}
+			else if (opSize == Core::OperandSize::Uint16)
+			{
+				const uint8_t msb = frame.function->chunk->GetCode()[frame.ip++];
+				const uint8_t lsb = frame.function->chunk->GetCode()[frame.ip++];
+				operand = static_cast<uint16_t>((msb << 8) | lsb);
 			}
 
 			Core::Instruction instr(opcode, operand);
@@ -265,20 +246,7 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	case OP_ADD: {
 		Value b = m_context.PopValue();
 		Value a = m_context.PopValue();
-		if (std::holds_alternative<std::shared_ptr<const std::string>>(a)
-			|| std::holds_alternative<std::shared_ptr<const std::string>>(b))
-		{
-			std::string result = ValueToString(a) + ValueToString(b);
-			m_context.PushValue(std::make_shared<const std::string>(result));
-		}
-		else if (std::holds_alternative<long long>(a) && std::holds_alternative<long long>(b))
-		{
-			m_context.PushValue(std::get<long long>(a) + std::get<long long>(b));
-		}
-		else if (std::holds_alternative<double>(a) && std::holds_alternative<double>(b))
-		{
-			m_context.PushValue(std::get<double>(a) + std::get<double>(b));
-		}
+		m_context.PushValue(Core::ValueHelper::Add(a, b));
 		return 0;
 	}
 
@@ -593,7 +561,7 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 			auto arr = std::get<Core::ArrayPtr>(container);
 			auto idx = Core::ValueHelper::As<int64_t>(indexVal);
 
-			ptr->get = [arr, idx]() { return arr->elements[idx]; };
+			ptr->get = [arr, idx] { return arr->elements[idx]; };
 			ptr->set = [arr, idx](const Value& v) { arr->elements[idx] = v; };
 		}
 		else if (std::holds_alternative<Core::InstancePtr>(container))

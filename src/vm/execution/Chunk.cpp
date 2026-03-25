@@ -16,6 +16,13 @@ void Chunk::WriteConstant(const Core::Value& value)
 	code.push_back(AddConstant(value));
 }
 
+void Chunk::WriteJump(const Core::OpCode opcode, const uint16_t offset)
+{
+	Write(opcode);
+	code.push_back(static_cast<uint8_t>((offset >> 8) & 0xff));
+	code.push_back(static_cast<uint8_t>(offset & 0xff));
+}
+
 uint8_t Chunk::AddConstant(const Core::Value& value)
 {
 	constants.push_back(value);
