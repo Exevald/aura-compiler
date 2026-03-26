@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 #include <memory>
 #include <string>
+#include <stdexcept>
 #include <vector>
 
 using namespace VM::Core;
@@ -146,4 +147,40 @@ TEST_F(CompilerTest, BytecodeIfElse)
 
 	EXPECT_TRUE(hasJumpIfFalse) << "Missing OP_JUMP_IF_FALSE";
 	EXPECT_TRUE(hasJump) << "Missing OP_JUMP (for else branch)";
+}
+
+TEST_F(CompilerTest, SemanticUndefinedVariable)
+{
+	const auto root = ParseCode("var x = y + 1;");
+	ASSERT_NE(root, nullptr);
+
+	BytecodeGenerator compiler;
+	EXPECT_THROW(compiler.Compile(root.get()), std::runtime_error);
+}
+
+TEST_F(CompilerTest, SemanticArithmeticTypeMismatch)
+{
+	const auto root = ParseCode("var x = \"hello\" - 1;");
+	ASSERT_NE(root, nullptr);
+
+	BytecodeGenerator compiler;
+	EXPECT_THROW(compiler.Compile(root.get()), std::runtime_error);
+}
+
+TEST_F(CompilerTest, SemanticIndexingNonArray)
+{
+	const auto root = ParseCode("var x = 1; print x[0];");
+	ASSERT_NE(root, nullptr);
+
+	BytecodeGenerator compiler;
+	EXPECT_THROW(compiler.Compile(root.get()), std::runtime_error);
+}
+
+TEST_F(CompilerTest, SemanticIndexingStringType)
+{
+	const auto root = ParseCode("var list = [1, 2]; var y = list[\"a\"];");
+	ASSERT_NE(root, nullptr);
+
+	BytecodeGenerator compiler;
+	EXPECT_THROW(compiler.Compile(root.get()), std::runtime_error);
 }

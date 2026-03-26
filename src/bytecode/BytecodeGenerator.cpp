@@ -1,9 +1,13 @@
 #include "BytecodeGenerator.h"
+#include "../ast/SemanticAnalyzer.h"
 
 using namespace VM::Core;
 
 VM::Execution::Chunk BytecodeGenerator::Compile(ASTNode* root)
 {
+	SemanticAnalyzer analyzer;
+	analyzer.Analyze(root);
+
 	m_symbols.Reset();
 	m_currentFunction = std::make_shared<Function>();
 	m_currentFunction->name = "top_level";

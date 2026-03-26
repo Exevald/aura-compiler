@@ -16,5 +16,5 @@ public:
 	{
 	}
 
-	void Accept(ASTVisitor& v) override {}
+	void Accept(ASTVisitor& v) override { v.Visit(*this); }
 };
