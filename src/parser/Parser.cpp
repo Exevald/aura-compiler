@@ -1,4 +1,6 @@
 #include "Parser.h"
+
+#include "ASTBuilder.h"
 #include "RemapToken.h"
 
 #include <algorithm>
@@ -25,13 +27,13 @@ bool SLRParser::Parse()
 	while (true)
 	{
 		int s = stateStack.top();
+		const std::string stringToken = remapToken::RemapTokenTypeToString(token);
 
-		if (const std::string stringToken = remapToken::RemapTokenTypeToString(token);
-			m_actionTable[s].contains(stringToken))
+		if (m_actionTable[s].contains(stringToken))
 		{
+			auto [type, value] = m_actionTable[s][stringToken];
 
-			if (auto [type, value] = m_actionTable[s][stringToken];
-				type == ActionType::SHIFT)
+			if (type == ActionType::SHIFT)
 			{
 				m_semanticStack.push(std::make_unique<LeafNode>(stringToken, token.value));
 				stateStack.push(value);
@@ -40,7 +42,7 @@ bool SLRParser::Parse()
 			else if (type == ActionType::REDUCE)
 			{
 				const auto& rule = m_rules[value];
-				auto newNode = std::make_unique<InternalNode>(rule.lhs);
+				auto newNode = std::make_unique<RawNode>(rule.lhs);
 
 				std::vector<ASTNodePtr> children;
 				for (const auto& rh : rule.rhs)
@@ -57,28 +59,19 @@ bool SLRParser::Parse()
 				}
 
 				std::ranges::reverse(children);
-				for (auto& child : children)
-				{
-					newNode->AddChild(std::move(child));
-				}
+				newNode->children = std::move(children);
 
 				m_semanticStack.push(std::move(newNode));
 
-				if (int top = stateStack.top();
-					m_gotoTable.contains(top) && m_gotoTable[top].contains(rule.lhs))
-				{
-					stateStack.push(m_gotoTable[top][rule.lhs]);
-				}
-				else
-				{
-					return false;
-				}
+				int top = stateStack.top();
+				stateStack.push(m_gotoTable[top][rule.lhs]);
 			}
 			else if (type == ActionType::ACCEPT)
 			{
 				if (!m_semanticStack.empty())
 				{
-					m_root = std::move(m_semanticStack.top());
+					ASTBuilder builder;
+					m_root = builder.Build(std::move(m_semanticStack.top()));
 				}
 				return true;
 			}

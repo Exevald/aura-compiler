@@ -1,5 +1,5 @@
 #include "../../core/values/ValueHelper.h"
-#include "VirtualMachine.h"
+#include "../src/vm/execution/VirtualMachine.h"
 
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
