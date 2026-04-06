@@ -48,6 +48,26 @@ std::string_view ValueHelper::GetTypeName(const Value& val) noexcept
 		{
 			return "function";
 		}
+		else if constexpr (std::is_same_v<T, ClosurePtr>)
+		{
+			return "closure";
+		}
+		else if constexpr (std::is_same_v<T, NativeFunctionPtr>)
+		{
+			return "native_function";
+		}
+		else if constexpr (std::is_same_v<T, ModulePtr>)
+		{
+			return "module";
+		}
+		else if constexpr (std::is_same_v<T, ThreadPtr>)
+		{
+			return "thread";
+		}
+		else if constexpr (std::is_same_v<T, MutexPtr>)
+		{
+			return "mutex";
+		}
 		else
 		{
 			return "unknown";
@@ -67,6 +87,14 @@ void ValueHelper::PrintValue(const Value& val, std::ostream& out)
 		else if constexpr (std::is_same_v<T, FunctionPtr>)
 		{
 			out << "<fn " << (v ? v->name : "anonymous") << ">";
+		}
+		else if constexpr (std::is_same_v<T, ClosurePtr>)
+		{
+			out << "<closure " << ((v && v->function) ? v->function->name : "anonymous") << ">";
+		}
+		else if constexpr (std::is_same_v<T, NativeFunctionPtr>)
+		{
+			out << "<native " << (v ? v->name : "anonymous") << ">";
 		}
 		else if constexpr (std::is_same_v<T, std::monostate>)
 		{
@@ -100,6 +128,18 @@ void ValueHelper::PrintValue(const Value& val, std::ostream& out)
 		else if constexpr (std::is_same_v<T, PointerPtr>)
 		{
 			out << (v ? v->targetName : "nullptr");
+		}
+		else if constexpr (std::is_same_v<T, ModulePtr>)
+		{
+			out << "<module " << (v ? v->name : "anonymous") << ">";
+		}
+		else if constexpr (std::is_same_v<T, ThreadPtr>)
+		{
+			out << "<thread " << (v ? std::to_string(v->id) : "null") << ">";
+		}
+		else if constexpr (std::is_same_v<T, MutexPtr>)
+		{
+			out << "<mutex " << (v ? std::to_string(v->id) : "null") << ">";
 		}
 		else
 		{
@@ -208,6 +248,26 @@ bool ValueHelper::Equal(const Value& lhs, const Value& rhs)
 			if constexpr (std::is_same_v<Type1, FunctionPtr>)
 			{
 				return a == b;
+			}
+
+			if constexpr (std::is_same_v<Type1, ClosurePtr>)
+			{
+				return a == b;
+			}
+
+			if constexpr (std::is_same_v<Type1, NativeFunctionPtr>)
+			{
+				return a == b;
+			}
+
+			if constexpr (std::is_same_v<Type1, ThreadPtr>)
+			{
+				return a == b || (a && b && a->id == b->id);
+			}
+
+			if constexpr (std::is_same_v<Type1, MutexPtr>)
+			{
+				return a == b || (a && b && a->id == b->id);
 			}
 
 			return a == b;

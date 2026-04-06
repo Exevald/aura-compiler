@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace VM::Core
 {
@@ -16,25 +17,36 @@ struct Instance;
 struct EnumVariant;
 struct Pointer;
 struct Function;
+struct Closure;
+struct Module;
 struct Iterator;
+struct ThreadHandle;
+struct MutexHandle;
 
 using FunctionPtr = std::shared_ptr<Function>;
+using ClosurePtr = std::shared_ptr<Closure>;
 using ArrayPtr = std::shared_ptr<Array>;
 using InstancePtr = std::shared_ptr<Instance>;
 using EnumPtr = std::shared_ptr<EnumVariant>;
 using PointerPtr = std::shared_ptr<Pointer>;
 using StringPtr = std::shared_ptr<const std::string>;
+using ModulePtr = std::shared_ptr<Module>;
 using IteratorPtr = std::shared_ptr<Iterator>;
+using ThreadPtr = std::shared_ptr<ThreadHandle>;
+using MutexPtr = std::shared_ptr<MutexHandle>;
 
 } // namespace VM::Core
 
 namespace VM::Execution
 {
 struct Chunk;
+class ExecutionContext;
 }
 
 namespace VM::Core
 {
+
+struct NativeFunction;
 
 using Value = std::variant<
 	std::monostate,
@@ -43,11 +55,18 @@ using Value = std::variant<
 	double,
 	StringPtr,
 	FunctionPtr,
+	ClosurePtr,
+	std::shared_ptr<NativeFunction>,
 	ArrayPtr,
 	InstancePtr,
 	EnumPtr,
 	PointerPtr,
-	IteratorPtr>;
+	ModulePtr,
+	IteratorPtr,
+	ThreadPtr,
+	MutexPtr>;
+
+using NativeFunctionPtr = std::shared_ptr<NativeFunction>;
 
 struct Iterator
 {
@@ -59,9 +78,25 @@ struct Function
 	std::string name;
 	std::unique_ptr<Execution::Chunk> chunk;
 	int arity = 0;
+	std::vector<std::string> captureNames;
 
 	Function();
 	~Function();
+};
+
+struct Closure
+{
+	FunctionPtr function;
+	std::vector<Value> captures;
+};
+
+struct NativeFunction
+{
+	using Handler = std::function<Value(Execution::ExecutionContext&, const std::vector<Value>&)>;
+
+	std::string name;
+	int arity = 0;
+	Handler invoke;
 };
 
 struct Array
@@ -84,7 +119,23 @@ struct Pointer
 {
 	std::function<Value()> get;
 	std::function<void(Value)> set;
+	std::function<bool()> deallocate;
 	std::string targetName;
+};
+
+struct Module
+{
+	std::string name;
+};
+
+struct ThreadHandle
+{
+	size_t id = 0;
+};
+
+struct MutexHandle
+{
+	size_t id = 0;
 };
 
 template <typename T>

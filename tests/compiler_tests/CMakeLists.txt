@@ -3,6 +3,7 @@ include(GoogleTest)
 add_executable(
         compiler_tests
         Compiler_tests.cpp
+        ${CMAKE_SOURCE_DIR}/src/Compiler.cpp
 )
 
 target_link_libraries(

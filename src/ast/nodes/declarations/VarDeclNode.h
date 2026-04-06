@@ -8,12 +8,30 @@
 class VarDeclNode : public ASTNode
 {
 public:
-	std::string name;
-	ASTNodePtr initializer;
+	enum class StorageClass
+	{
+		Default,
+		Shared,
+		ThreadLocal
+	};
 
-	VarDeclNode(std::string n, ASTNodePtr i)
+	std::string name;
+	std::string explicitType;
+	ASTNodePtr initializer;
+	bool isConst = false;
+	StorageClass storageClass = StorageClass::Default;
+
+	VarDeclNode(
+		std::string n,
+		std::string t,
+		ASTNodePtr i,
+		bool constant = false,
+		StorageClass storage = StorageClass::Default)
 		: name(std::move(n))
+		, explicitType(std::move(t))
 		, initializer(std::move(i))
+		, isConst(constant)
+		, storageClass(storage)
 	{
 	}
 

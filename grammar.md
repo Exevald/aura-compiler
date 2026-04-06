@@ -48,8 +48,13 @@ type_alias = type_alias_no_semi ";" ;
 type_alias_no_semi = "type" identifier type_params_opt "=" dataType ;
 
 struct_decl = struct_decl_no_semi ;
-struct_decl_no_semi = "struct" identifier type_params_opt "{" field_decl_list "}" contract_list ;
-field_decl_list = field_decl field_decl_list | EPSILON ;
+struct_decl_no_semi = "struct" identifier type_params_opt implements_opt "{" struct_member_list "}" contract_list ;
+implements_opt = "implements" interface_type_list | EPSILON ;
+interface_type_list = qualified_id interface_type_list_tail ;
+interface_type_list_tail = "," qualified_id interface_type_list_tail | EPSILON ;
+struct_member_list = struct_member struct_member_list | EPSILON ;
+struct_member = field_decl | struct_method ;
+struct_method = "fn" identifier "(" param_list_opt ")" type_guide_opt effect_spec_opt contract_list block_stmt ;
 field_decl = identifier ":" dataType ";" ;
 
 enum_decl = enum_decl_no_semi ;
@@ -108,7 +113,7 @@ multiplicative = unary multiplicative_tail ;
 multiplicative_tail = "*" unary multiplicative_tail | "/" unary multiplicative_tail | "mod" unary multiplicative_tail | "div" unary multiplicative_tail | EPSILON ;
 
 unary = primary | unary_op unary ;
-unary_op = "+" | "-" | "not" | "!" | "*" ;
+unary_op = "+" | "-" | "not" | "!" | "*" | "&" ;
 
 primary = "(" expression ")" | "true" | "false" | "null" | "return" | integer_literal | float_literal | string_literal | identifier_expr | arrow_func | array_lit | "comptime" block_stmt ;
 

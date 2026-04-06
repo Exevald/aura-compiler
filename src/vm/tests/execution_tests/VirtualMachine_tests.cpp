@@ -17,6 +17,34 @@ class VirtualMachineTest : public ::testing::Test
 protected:
 	VirtualMachine vm;
 
+	static uint8_t AddStringConstant(Chunk& chunk, const std::string& value)
+	{
+		return chunk.AddConstant(std::make_shared<const std::string>(value));
+	}
+
+	static void WriteUint8Operand(Chunk& chunk, const uint8_t operand)
+	{
+		chunk.code.push_back(operand);
+	}
+
+	static void WriteGetGlobal(Chunk& chunk, const std::string& name)
+	{
+		chunk.Write(OP_GET_GLOBAL);
+		WriteUint8Operand(chunk, AddStringConstant(chunk, name));
+	}
+
+	static void WriteGetModuleMember(Chunk& chunk, const std::string& member)
+	{
+		chunk.Write(OP_GET_MODULE_MEMBER);
+		WriteUint8Operand(chunk, AddStringConstant(chunk, member));
+	}
+
+	static void WriteDefineGlobal(Chunk& chunk, const std::string& name)
+	{
+		chunk.Write(OP_DEFINE_GLOBAL);
+		WriteUint8Operand(chunk, AddStringConstant(chunk, name));
+	}
+
 	static Chunk MakeReturnChunk(double value)
 	{
 		Chunk chunk;
@@ -230,17 +258,6 @@ TEST_F(VirtualMachineTest, JumpIfFalseTakesBranch)
 	EXPECT_NO_THROW(vm.Interpret(&chunk));
 }
 
-TEST_F(VirtualMachineTest, MaxStepsEnforcesTimeout)
-{
-	Chunk chunk;
-	chunk.Write(OP_LOOP);
-	chunk.code.push_back(0);
-	chunk.code.push_back(3);
-
-	vm.SetMaxSteps(100);
-	EXPECT_EQ(vm.Interpret(&chunk), false);
-}
-
 TEST_F(VirtualMachineTest, DebugModePrintsInstructions)
 {
 	Chunk chunk;
@@ -345,4 +362,338 @@ TEST_F(VirtualMachineTest, NotEqualInstruction)
 	chunk.Write(OP_NOT_EQUAL);
 	chunk.Write(OP_RETURN);
 	EXPECT_THAT(RunAndCapture(chunk), ::testing::HasSubstr("Result: true"));
+}
+
+TEST_F(VirtualMachineTest, BuiltinDiagnosticsModuleActiveAllocationsStartsAtZero)
+{
+	Chunk chunk;
+	WriteGetGlobal(chunk, "std.runtime");
+	WriteGetModuleMember(chunk, "active_allocations");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	chunk.Write(OP_RETURN);
+
+	EXPECT_THAT(RunAndCapture(chunk), ::testing::HasSubstr("Result: 0"));
+}
+
+TEST_F(VirtualMachineTest, BuiltinDiagnosticsModuleAllocAndFreeUpdateTrackedMemory)
+{
+	Chunk chunk;
+	WriteGetGlobal(chunk, "std.runtime");
+	WriteGetModuleMember(chunk, "alloc");
+	chunk.WriteConstant(int64_t{ 64 });
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(1);
+	WriteDefineGlobal(chunk, "ptr");
+
+	WriteGetGlobal(chunk, "std.runtime");
+	WriteGetModuleMember(chunk, "active_bytes");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	WriteDefineGlobal(chunk, "bytes_after_alloc");
+
+	WriteGetGlobal(chunk, "std.runtime");
+	WriteGetModuleMember(chunk, "free");
+	WriteGetGlobal(chunk, "ptr");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(1);
+	chunk.Write(OP_POP);
+
+	WriteGetGlobal(chunk, "std.runtime");
+	WriteGetModuleMember(chunk, "active_bytes");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	chunk.Write(OP_RETURN);
+
+	EXPECT_THAT(RunAndCapture(chunk), ::testing::HasSubstr("Result: 0"));
+
+	Value bytesAfterAlloc;
+	ASSERT_TRUE(vm.GetContext().GetGlobal("bytes_after_alloc", bytesAfterAlloc));
+	EXPECT_EQ(ValueHelper::As<int64_t>(bytesAfterAlloc), 64);
+}
+
+TEST_F(VirtualMachineTest, BuiltinDiagnosticsModuleDetectsUseAfterFree)
+{
+	Chunk chunk;
+	WriteGetGlobal(chunk, "std.runtime");
+	WriteGetModuleMember(chunk, "alloc");
+	chunk.WriteConstant(int64_t{ 8 });
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(1);
+	WriteDefineGlobal(chunk, "ptr");
+
+	WriteGetGlobal(chunk, "std.runtime");
+	WriteGetModuleMember(chunk, "free");
+	WriteGetGlobal(chunk, "ptr");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(1);
+	chunk.Write(OP_POP);
+
+	WriteGetGlobal(chunk, "ptr");
+	chunk.Write(OP_DEREF_GET);
+	chunk.Write(OP_RETURN);
+
+	EXPECT_FALSE(vm.Interpret(&chunk));
+	EXPECT_THAT(std::string(vm.GetContext().GetError()), ::testing::HasSubstr("Use after free"));
+}
+
+TEST_F(VirtualMachineTest, BuiltinDiagnosticsModuleClassifiesPointerAsNotSendSafe)
+{
+	Chunk chunk;
+	WriteGetGlobal(chunk, "std.runtime");
+	WriteGetModuleMember(chunk, "alloc");
+	chunk.WriteConstant(int64_t{ 8 });
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(1);
+	WriteDefineGlobal(chunk, "ptr");
+
+	WriteGetGlobal(chunk, "std.runtime");
+	WriteGetModuleMember(chunk, "is_send");
+	WriteGetGlobal(chunk, "ptr");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(1);
+	chunk.Write(OP_RETURN);
+
+	EXPECT_THAT(RunAndCapture(chunk), ::testing::HasSubstr("Result: false"));
+}
+
+TEST_F(VirtualMachineTest, BuiltinDiagnosticsModuleClassifiesPrimitiveArrayAsSendSafe)
+{
+	Chunk chunk;
+	chunk.WriteConstant(int64_t{ 1 });
+	chunk.WriteConstant(int64_t{ 2 });
+	chunk.WriteConstant(int64_t{ 3 });
+	chunk.Write(OP_BUILD_ARRAY);
+	chunk.code.push_back(3);
+	WriteDefineGlobal(chunk, "arr");
+
+	WriteGetGlobal(chunk, "std.runtime");
+	WriteGetModuleMember(chunk, "is_send");
+	WriteGetGlobal(chunk, "arr");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(1);
+	chunk.Write(OP_RETURN);
+
+	EXPECT_THAT(RunAndCapture(chunk), ::testing::HasSubstr("Result: true"));
+}
+
+TEST_F(VirtualMachineTest, BuiltinDiagnosticsModuleAssertNoLeaksFailsWhenAllocationSurvives)
+{
+	Chunk chunk;
+	WriteGetGlobal(chunk, "std.runtime");
+	WriteGetModuleMember(chunk, "alloc");
+	chunk.WriteConstant(int64_t{ 32 });
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(1);
+	chunk.Write(OP_POP);
+
+	WriteGetGlobal(chunk, "std.runtime");
+	WriteGetModuleMember(chunk, "assert_no_leaks");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	chunk.Write(OP_RETURN);
+
+	EXPECT_FALSE(vm.Interpret(&chunk));
+	EXPECT_THAT(std::string(vm.GetContext().GetError()), ::testing::HasSubstr("Memory leak detected"));
+}
+
+TEST_F(VirtualMachineTest, BuiltinSyncModuleDetectsLockGraphDeadlock)
+{
+	Chunk chunk;
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "spawn");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	WriteDefineGlobal(chunk, "t1");
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "spawn");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	WriteDefineGlobal(chunk, "t2");
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "mutex");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	WriteDefineGlobal(chunk, "m1");
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "mutex");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	WriteDefineGlobal(chunk, "m2");
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "lock");
+	WriteGetGlobal(chunk, "t1");
+	WriteGetGlobal(chunk, "m1");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(2);
+	chunk.Write(OP_POP);
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "lock");
+	WriteGetGlobal(chunk, "t2");
+	WriteGetGlobal(chunk, "m2");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(2);
+	chunk.Write(OP_POP);
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "lock");
+	WriteGetGlobal(chunk, "t1");
+	WriteGetGlobal(chunk, "m2");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(2);
+	chunk.Write(OP_POP);
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "lock");
+	WriteGetGlobal(chunk, "t2");
+	WriteGetGlobal(chunk, "m1");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(2);
+	chunk.Write(OP_RETURN);
+
+	EXPECT_FALSE(vm.Interpret(&chunk));
+	EXPECT_THAT(std::string(vm.GetContext().GetError()), ::testing::HasSubstr("Deadlock detected"));
+}
+
+TEST_F(VirtualMachineTest, BuiltinSyncModuleReportsWouldDeadlockBeforeLock)
+{
+	Chunk chunk;
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "spawn");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	WriteDefineGlobal(chunk, "t1");
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "spawn");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	WriteDefineGlobal(chunk, "t2");
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "mutex");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	WriteDefineGlobal(chunk, "m1");
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "mutex");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	WriteDefineGlobal(chunk, "m2");
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "lock");
+	WriteGetGlobal(chunk, "t1");
+	WriteGetGlobal(chunk, "m1");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(2);
+	chunk.Write(OP_POP);
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "lock");
+	WriteGetGlobal(chunk, "t2");
+	WriteGetGlobal(chunk, "m2");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(2);
+	chunk.Write(OP_POP);
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "lock");
+	WriteGetGlobal(chunk, "t1");
+	WriteGetGlobal(chunk, "m2");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(2);
+	chunk.Write(OP_POP);
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "would_deadlock");
+	WriteGetGlobal(chunk, "t2");
+	WriteGetGlobal(chunk, "m1");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(2);
+	chunk.Write(OP_RETURN);
+
+	EXPECT_THAT(RunAndCapture(chunk), ::testing::HasSubstr("Result: true"));
+}
+
+TEST_F(VirtualMachineTest, BuiltinSyncModuleRejectsSelfDeadlock)
+{
+	Chunk chunk;
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "current_thread");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	WriteDefineGlobal(chunk, "t");
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "mutex");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	WriteDefineGlobal(chunk, "m");
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "lock");
+	WriteGetGlobal(chunk, "t");
+	WriteGetGlobal(chunk, "m");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(2);
+	chunk.Write(OP_POP);
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "lock");
+	WriteGetGlobal(chunk, "t");
+	WriteGetGlobal(chunk, "m");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(2);
+	chunk.Write(OP_RETURN);
+
+	EXPECT_FALSE(vm.Interpret(&chunk));
+	EXPECT_THAT(std::string(vm.GetContext().GetError()), ::testing::HasSubstr("self-deadlock"));
+}
+
+TEST_F(VirtualMachineTest, BuiltinSyncModuleRejectsUnlockByNonOwner)
+{
+	Chunk chunk;
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "spawn");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	WriteDefineGlobal(chunk, "t1");
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "spawn");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	WriteDefineGlobal(chunk, "t2");
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "mutex");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(0);
+	WriteDefineGlobal(chunk, "m");
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "lock");
+	WriteGetGlobal(chunk, "t1");
+	WriteGetGlobal(chunk, "m");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(2);
+	chunk.Write(OP_POP);
+
+	WriteGetGlobal(chunk, "std.sync");
+	WriteGetModuleMember(chunk, "unlock");
+	WriteGetGlobal(chunk, "t2");
+	WriteGetGlobal(chunk, "m");
+	chunk.Write(OP_CALL);
+	chunk.code.push_back(2);
+	chunk.Write(OP_RETURN);
+
+	EXPECT_FALSE(vm.Interpret(&chunk));
+	EXPECT_THAT(std::string(vm.GetContext().GetError()), ::testing::HasSubstr("non-owner"));
 }

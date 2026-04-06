@@ -30,6 +30,10 @@ TEST(ValueTest, GetTypeNames)
 	EXPECT_EQ(ValueHelper::GetTypeName(true), "bool");
 	EXPECT_EQ(ValueHelper::GetTypeName(int64_t{ 100 }), "int64");
 	EXPECT_EQ(ValueHelper::GetTypeName(2.718), "float64");
+
+	auto native = std::make_shared<VM::Core::NativeFunction>();
+	native->name = "probe";
+	EXPECT_EQ(ValueHelper::GetTypeName(native), "native_function");
 }
 
 TEST(ValueTest, AsConversionPrimitiveToPrimitive)

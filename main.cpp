@@ -65,21 +65,17 @@ int main(int argc, char* argv[])
 
 		if (command == "build")
 		{
-			std::ifstream source(inputPath);
 			std::ofstream binary(outputExe + ".aurabc", std::ios::binary);
 
 			std::cout << "Building " << inputPath << "..." << std::endl;
-			if (compiler.Compile(source, binary))
+			if (compiler.CompileFile(inputPath, binary))
 			{
 				std::cout << "Success! Created " << outputExe << ".aurabc" << std::endl;
 			}
 		}
 		else if (command == "run")
 		{
-			std::ifstream source(inputPath);
-			std::stringstream ss;
-
-			auto chunk = compiler.CompileToChunk(source);
+			auto chunk = compiler.CompileFileToChunk(inputPath);
 
 			VM::Execution::VirtualMachine vm;
 			vm.Interpret(&chunk);

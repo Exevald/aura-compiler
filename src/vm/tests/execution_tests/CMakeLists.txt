@@ -9,7 +9,10 @@ add_executable(
 )
 
 target_include_directories(execution_tests PRIVATE
-        ${CMAKE_SOURCE_DIR}/execution
+        ${CMAKE_SOURCE_DIR}/src/vm
+        ${CMAKE_SOURCE_DIR}/src/vm/execution
+        ${CMAKE_SOURCE_DIR}/src/vm/runtime
+        ${CMAKE_SOURCE_DIR}/src/vm/core
 )
 
 target_link_libraries(execution_tests PRIVATE

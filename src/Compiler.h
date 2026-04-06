@@ -1,10 +1,12 @@
 #pragma once
 
-#include "../vm/execution/Chunk.h"
-#include "BytecodeGenerator.h"
+#include "bytecode/BytecodeGenerator.h"
 #include "lexer/Lexer.h"
+#include "vm/execution/Chunk.h"
 
+#include <filesystem>
 #include <string>
+#include <unordered_map>
 
 class Compiler
 {
@@ -12,13 +14,23 @@ public:
 	explicit Compiler(
 		const std::string& grammarFileName,
 		BytecodeGenerator& bytecodeGenerator,
-		Lexer& lexer);
+		const Lexer& lexer);
 
-	bool Compile(std::istream& input, std::ostream& output) const;
+	bool Compile(const std::istream& input, std::ostream& output) const;
 	[[nodiscard]] VM::Execution::Chunk CompileToChunk(const std::istream& input) const;
+	bool CompileFile(const std::filesystem::path& inputPath, std::ostream& output) const;
+	[[nodiscard]] VM::Execution::Chunk CompileFileToChunk(const std::filesystem::path& inputPath) const;
 
 private:
+	struct CachedModule
+	{
+		std::string source;
+		std::string declaredModuleName;
+	};
+
+	[[nodiscard]] ASTNodePtr ParseSourceToAst(const std::string& code) const;
+
 	std::string m_grammarText;
 	BytecodeGenerator& m_bytecodeGenerator;
-	Lexer& m_lexer;
+	mutable std::unordered_map<std::string, CachedModule> m_moduleCache;
 };

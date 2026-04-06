@@ -41,6 +41,8 @@ inline std::string RemapTokenTypeToString(const Token& t)
 		return "enum";
 	case TokenType::KW_INTERFACE:
 		return "interface";
+	case TokenType::KW_IMPLEMENTS:
+		return "implements";
 	case TokenType::KW_SHARED:
 		return "shared";
 	case TokenType::KW_THREAD_LOCAL:
@@ -176,6 +178,8 @@ inline std::string RemapTokenTypeToString(const Token& t)
 		return "<=";
 	case TokenType::OP_GREATER_OR_EQUAL:
 		return ">=";
+	case TokenType::OP_AMPERSAND:
+		return "&";
 
 	case TokenType::OP_DOUBLE_AMPERSAND:
 		return "&&";

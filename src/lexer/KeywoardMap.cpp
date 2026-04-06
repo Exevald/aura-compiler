@@ -10,6 +10,7 @@ KeywordMap::KeywordMap()
 	m_map["struct"] = TokenType::KW_STRUCT;
 	m_map["enum"] = TokenType::KW_ENUM;
 	m_map["interface"] = TokenType::KW_INTERFACE;
+	m_map["implements"] = TokenType::KW_IMPLEMENTS;
 	m_map["fn"] = TokenType::KW_FN;
 	m_map["var"] = TokenType::KW_VAR;
 	m_map["const"] = TokenType::KW_CONST;

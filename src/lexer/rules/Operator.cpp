@@ -83,6 +83,8 @@ Token operatorRule::ParseOperator(Reader& reader, size_t pos, size_t line)
 		return { TokenType::OP_LESS, "<", pos, line, Error::NONE };
 	case '>':
 		return { TokenType::OP_GREATER, ">", pos, line, Error::NONE };
+	case '&':
+		return { TokenType::OP_AMPERSAND, "&", pos, line, Error::NONE };
 	case '!':
 		return { TokenType::ERROR, "!", pos, line, Error::UNEXPECTED_CHARACTER };
 	default:

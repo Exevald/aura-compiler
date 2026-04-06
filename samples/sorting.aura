@@ -1,0 +1,21 @@
+module samples.sorting;
+
+fn bubbleSort(arr: [int], n: int) : [int] {
+    var i: int = 0;
+
+    while (i < n) {
+        var j: int = 0;
+        var limit: int = n - 1;
+
+        while (j < limit) {
+            if (arr[j] > arr[j + 1]) {
+                var temp: int = arr[j];
+                arr[j] = arr[j + 1];
+                arr[j + 1] = temp;
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return arr;
+}

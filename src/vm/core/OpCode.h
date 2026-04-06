@@ -41,8 +41,12 @@ enum class OpCode : uint8_t
 	OP_SET_GLOBAL = 0x22,
 	OP_GET_LOCAL = 0x23,
 	OP_SET_LOCAL = 0x24,
+	OP_GET_UPVALUE = 0x25,
+	OP_SET_UPVALUE = 0x26,
 
 	OP_CALL = 0x30,
+	OP_CLOSURE = 0x31,
+	OP_GET_MODULE_MEMBER = 0x32,
 
 	OP_MOD = 0x40,
 	OP_DIV = 0x41,
@@ -63,6 +67,7 @@ enum class OpCode : uint8_t
 	OP_ADDR_LOCAL = 0x60,
 	OP_ADDR_GLOBAL = 0x61,
 	OP_ADDR_MEMBER = 0x62,
+	OP_ADDR_UPVALUE = 0x65,
 
 	OP_DEREF_GET = 0x63,
 	OP_DEREF_SET = 0x64,
@@ -108,6 +113,14 @@ constexpr std::string_view GetOpCodeName(const OpCode opcode) noexcept
 		return "OP_GET_LOCAL";
 	case OpCode::OP_SET_LOCAL:
 		return "OP_SET_LOCAL";
+	case OpCode::OP_GET_UPVALUE:
+		return "OP_GET_UPVALUE";
+	case OpCode::OP_SET_UPVALUE:
+		return "OP_SET_UPVALUE";
+	case OpCode::OP_CLOSURE:
+		return "OP_CLOSURE";
+	case OpCode::OP_GET_MODULE_MEMBER:
+		return "OP_GET_MODULE_MEMBER";
 	case OpCode::OP_JUMP:
 		return "OP_JUMP";
 	case OpCode::OP_JUMP_IF_FALSE:
@@ -130,6 +143,8 @@ constexpr std::string_view GetOpCodeName(const OpCode opcode) noexcept
 		return "OP_MEMBER_GET";
 	case OpCode::OP_ADDR_GLOBAL:
 		return "OP_ADDR_GLOBAL";
+	case OpCode::OP_ADDR_UPVALUE:
+		return "OP_ADDR_UPVALUE";
 	case OpCode::OP_DEREF_SET:
 		return "OP_DEREF_SET";
 	case OpCode::OP_DEREF_GET:
@@ -153,7 +168,11 @@ constexpr bool OpCodeHasOperand(const OpCode opcode)
 	case OP_SET_GLOBAL:
 	case OP_GET_LOCAL:
 	case OP_SET_LOCAL:
+	case OP_GET_UPVALUE:
+	case OP_SET_UPVALUE:
 	case OP_CALL:
+	case OP_CLOSURE:
+	case OP_GET_MODULE_MEMBER:
 	case OP_LOOP:
 	case OP_BUILD_ARRAY:
 	case OP_BUILD_STRUCT:
@@ -163,6 +182,7 @@ constexpr bool OpCodeHasOperand(const OpCode opcode)
 	case OP_GET_ENUM_ARG:
 	case OP_ADDR_LOCAL:
 	case OP_ADDR_GLOBAL:
+	case OP_ADDR_UPVALUE:
 	case OP_ITER_NEXT:
 		return true;
 	default:
@@ -187,7 +207,11 @@ constexpr OperandSize GetOperandSize(const OpCode opcode)
 	case OP_SET_GLOBAL:
 	case OP_GET_LOCAL:
 	case OP_SET_LOCAL:
+	case OP_GET_UPVALUE:
+	case OP_SET_UPVALUE:
 	case OP_CALL:
+	case OP_CLOSURE:
+	case OP_GET_MODULE_MEMBER:
 	case OP_BUILD_ARRAY:
 	case OP_BUILD_STRUCT:
 	case OP_MEMBER_GET:
@@ -196,6 +220,7 @@ constexpr OperandSize GetOperandSize(const OpCode opcode)
 	case OP_GET_ENUM_ARG:
 	case OP_ADDR_LOCAL:
 	case OP_ADDR_GLOBAL:
+	case OP_ADDR_UPVALUE:
 	case OP_ITER_NEXT:
 		return OperandSize::Uint8;
 

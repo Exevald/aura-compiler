@@ -1,0 +1,12 @@
+module samples.module_namespace;
+
+import samples.math_utils as math;
+
+var left: int = 20;
+var right: int = 7;
+
+print "Imported module samples.math_utils";
+print "sum:";
+print math.sum(left, right);
+print "difference:";
+print math.difference(left, right);

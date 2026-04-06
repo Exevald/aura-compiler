@@ -3,4 +3,8 @@ name = "vm"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "aura_sync_graph"
+crate-type = ["staticlib"]
+
 [dependencies]

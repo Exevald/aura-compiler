@@ -1,17 +1,58 @@
 #include "Parser.h"
 
+#include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
 
+namespace
+{
+
+std::filesystem::path GrammarPath()
+{
+	return std::filesystem::path(__FILE__).parent_path().parent_path().parent_path() / "grammar.md";
+}
+
+std::string NormalizeGrammar(std::istream& input)
+{
+	std::stringstream raw;
+	raw << input.rdbuf();
+
+	std::stringstream lines(raw.str());
+	std::stringstream normalized;
+	std::string line;
+	while (std::getline(lines, line))
+	{
+		if (line.rfind("```", 0) != 0)
+		{
+			normalized << line << '\n';
+		}
+	}
+	return normalized.str();
+}
+
+const std::string& CachedGrammarText()
+{
+	static const std::string grammar = [] {
+		std::ifstream file(GrammarPath());
+		if (!file.is_open())
+		{
+			return std::string{};
+		}
+		return NormalizeGrammar(file);
+	}();
+	return grammar;
+}
+
+} // namespace
+
 bool CheckSyntax(const std::string& code)
 {
-	std::ifstream file("grammar.txt");
-	std::stringstream buffer;
-	buffer << file.rdbuf();
-	file.close();
-
+	if (CachedGrammarText().empty())
+	{
+		return false;
+	}
 	Lexer lexer(code);
-	SLRParser parser(lexer, buffer.str());
+	SLRParser parser(lexer, CachedGrammarText());
 	return parser.Parse();
 }
 
@@ -20,6 +61,8 @@ TEST(ParserTests, ModulesAndImports)
 	EXPECT_TRUE(CheckSyntax("module core.network.http;"));
 	EXPECT_TRUE(CheckSyntax("import std.io;"));
 	EXPECT_TRUE(CheckSyntax("import math as m;"));
+	EXPECT_TRUE(CheckSyntax("module samples.app; import samples.math_utils as math; print math.sum(1, 2);"));
+	EXPECT_TRUE(CheckSyntax("module samples.app; import samples.factory as factory; var add = factory.makeAdder(10); print add(5);"));
 	EXPECT_TRUE(CheckSyntax("export var version = 1;"));
 	EXPECT_TRUE(CheckSyntax("export struct Point { x: int; };"));
 	EXPECT_TRUE(CheckSyntax("export effect Logger;"));
@@ -52,6 +95,12 @@ TEST(ParserTests, AdvancedFunctions)
 TEST(ParserTests, DataStructures)
 {
 	EXPECT_TRUE(CheckSyntax("enum Option<T> { Some(T) | None }"));
+	EXPECT_TRUE(CheckSyntax(
+		"interface Reader { fn read() : int; }"
+		"struct FileReader implements Reader {"
+		"  value: int;"
+		"  fn read() : int { return value; }"
+		"}"));
 
 	const std::string iface = R"(
         interface Reader {
@@ -121,6 +170,7 @@ TEST(ParserTests, ArrowFunctions)
 {
 	EXPECT_TRUE(CheckSyntax("var f = fn(x: int) -> x + 1;"));
 	EXPECT_TRUE(CheckSyntax("var g = fn(x, y) raises {Err} -> { return x + y; };"));
+	EXPECT_TRUE(CheckSyntax("fn build() { var f = fn(x: int) -> fn(y: int) -> x + y; return f; }"));
 }
 
 TEST(ParserTests, DeeplyNestedTypes)
@@ -225,6 +275,7 @@ TEST(ParserTests, SpecialKeywords)
 	EXPECT_TRUE(CheckSyntax("const x = comptime { var a = 1; return a + 1; };"));
 	EXPECT_TRUE(CheckSyntax("fn sync() { transaction(shared global_lock) { do_work(); } }"));
 	EXPECT_TRUE(CheckSyntax("fn hack() { unsafe { *(ptr_val) = 0; } }"));
+	EXPECT_TRUE(CheckSyntax("fn addr() { var x: int = 1; var p: ptr<int> = &x; }"));
 }
 
 TEST(ParserTests, OptionalAndEmpty)
@@ -243,6 +294,9 @@ TEST(ParserTests, StrictNegativeTests)
 	EXPECT_FALSE(CheckSyntax("const x;"));
 	EXPECT_FALSE(CheckSyntax("export 123;"));
 	EXPECT_FALSE(CheckSyntax("import ;"));
+	EXPECT_FALSE(CheckSyntax("module ;"));
+	EXPECT_FALSE(CheckSyntax("import samples.math_utils as ;"));
+	EXPECT_FALSE(CheckSyntax("module samples.app import samples.math_utils;"));
 }
 
 TEST(ParserTests, ControlFlow)

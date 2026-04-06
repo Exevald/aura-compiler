@@ -19,7 +19,7 @@ public:
 	void PopScope();
 
 	uint8_t Define(const std::string& name);
-	std::optional<uint8_t> Resolve(const std::string& name);
+	std::optional<uint8_t> Resolve(const std::string& name) const;
 	void Reset();
 
 private:

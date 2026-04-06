@@ -9,6 +9,9 @@ class AssignmentNode : public ASTNode
 {
 public:
 	std::string name;
+	ASTNodePtr object;
+	std::string member;
+	ASTNodePtr dereferenceTarget;
 	ASTNodePtr value;
 	ASTNodePtr index;
 
@@ -19,6 +22,18 @@ public:
 	{
 	}
 
+	AssignmentNode(ASTNodePtr obj, std::string memberName, ASTNodePtr v)
+		: object(std::move(obj))
+		, member(std::move(memberName))
+		, value(std::move(v))
+	{
+	}
+
+	AssignmentNode(ASTNodePtr derefTarget, ASTNodePtr v)
+		: dereferenceTarget(std::move(derefTarget))
+		, value(std::move(v))
+	{
+	}
+
 	void Accept(ASTVisitor& v) override { v.Visit(*this); }
 };
-

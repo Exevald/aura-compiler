@@ -338,6 +338,13 @@ TEST_F(LexerTest, OperatorDoubleAmpersand)
 	EXPECT_EQ(token.type, TokenType::OP_DOUBLE_AMPERSAND);
 }
 
+TEST_F(LexerTest, OperatorAmpersand)
+{
+	Token token = GetToken("&");
+	EXPECT_EQ(token.type, TokenType::OP_AMPERSAND);
+	EXPECT_EQ(token.value, "&");
+}
+
 TEST_F(LexerTest, OperatorDoublePipe)
 {
 	Token token = GetToken("||");

@@ -19,6 +19,8 @@ add_executable(
         core/values/ValueHelper.cpp
         runtime/StringPool.cpp
         runtime/ExecutionContext.cpp
+        runtime/DiagnosticsModule.cpp
+        runtime/SyncModule.cpp
         execution/Chunk.cpp
         execution/VirtualMachine.cpp
 )
@@ -28,8 +30,17 @@ add_library(
         core/values/ValueHelper.cpp
         runtime/StringPool.cpp
         runtime/ExecutionContext.cpp
+        runtime/DiagnosticsModule.cpp
+        runtime/SyncModule.cpp
         execution/Chunk.cpp
         execution/VirtualMachine.cpp
+)
+
+target_include_directories(vm_lib PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/execution
+        ${CMAKE_CURRENT_SOURCE_DIR}/runtime
+        ${CMAKE_CURRENT_SOURCE_DIR}/core
 )
 
 add_subdirectory(tests)

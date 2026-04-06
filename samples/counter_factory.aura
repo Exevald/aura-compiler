@@ -1,0 +1,11 @@
+module samples.counter_factory;
+
+fn makeAdder(base: int) {
+    var add = fn(value: int) -> value + base;
+    return add;
+}
+
+fn makeScaler(factor: int) {
+    var scale = fn(value: int) -> value * factor;
+    return scale;
+}
