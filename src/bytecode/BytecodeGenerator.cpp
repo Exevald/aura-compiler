@@ -371,19 +371,19 @@ void BytecodeGenerator::CompileFunctionBody(
 
 	for (const auto& [_, typeName] : params)
 	{
-		context.symbols.Define(name);
+		context.symbols.Define(_);
 		context.function->arity++;
 		if (m_metadata.structLayouts.contains(QualifyName(typeName)))
 		{
-			context.structVarScopes.back()[name] = QualifyName(typeName);
+			context.structVarScopes.back()[_] = QualifyName(typeName);
 		}
 		else if (m_metadata.structLayouts.contains(typeName))
 		{
-			context.structVarScopes.back()[name] = typeName;
+			context.structVarScopes.back()[_] = typeName;
 		}
 		if (m_metadata.interfaceMethods.contains(QualifyName(typeName)))
 		{
-			context.interfaceVarScopes.back()[name] = FunctionContext::InterfaceBinding{
+			context.interfaceVarScopes.back()[_] = FunctionContext::InterfaceBinding{
 				QualifyName(typeName),
 				"",
 				FunctionContext::InterfaceBinding::RuntimeKind::Unknown
@@ -391,7 +391,7 @@ void BytecodeGenerator::CompileFunctionBody(
 		}
 		else if (m_metadata.interfaceMethods.contains(typeName))
 		{
-			context.interfaceVarScopes.back()[name] = FunctionContext::InterfaceBinding{
+			context.interfaceVarScopes.back()[_] = FunctionContext::InterfaceBinding{
 				typeName,
 				"",
 				FunctionContext::InterfaceBinding::RuntimeKind::Unknown

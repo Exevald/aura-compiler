@@ -42,6 +42,8 @@ private:
 		std::vector<TypeInfo> params;
 		std::shared_ptr<TypeInfo> ret;
 		std::string name;
+		bool variadic = false;
+		std::shared_ptr<TypeInfo> variadicParam;
 		std::shared_ptr<std::unordered_map<std::string, TypeInfo>> fields;
 		std::vector<TypeInfo> variantArgs;
 		int enumTag = -1;
@@ -55,11 +57,20 @@ private:
 		static TypeInfo Float() { return { TypeKind::Float }; }
 		static TypeInfo String() { return { TypeKind::String }; }
 
-		static TypeInfo Function(std::vector<TypeInfo> p, TypeInfo r)
+		static TypeInfo Function(
+			std::vector<TypeInfo> p,
+			TypeInfo r,
+			bool isVariadic = false,
+			std::optional<TypeInfo> variadicParameter = std::nullopt)
 		{
 			TypeInfo t;
 			t.kind = TypeKind::Function;
 			t.params = std::move(p);
+			t.variadic = isVariadic;
+			if (variadicParameter.has_value())
+			{
+				t.variadicParam = std::make_shared<TypeInfo>(std::move(*variadicParameter));
+			}
 			t.ret = std::make_shared<TypeInfo>(std::move(r));
 			return t;
 		}
@@ -168,6 +179,24 @@ private:
 			}
 			if (kind == TypeKind::Function)
 			{
+				if (variadic != other.variadic)
+				{
+					return false;
+				}
+				if (variadic)
+				{
+					if (!variadicParam || !other.variadicParam)
+					{
+						if (variadicParam != other.variadicParam)
+						{
+							return false;
+						}
+					}
+					else if (!variadicParam->Equals(*other.variadicParam))
+					{
+						return false;
+					}
+				}
 				if (params.size() != other.params.size())
 				{
 					return false;

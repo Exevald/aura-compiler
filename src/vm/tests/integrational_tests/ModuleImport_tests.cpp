@@ -38,6 +38,16 @@ std::filesystem::path GrammarPath()
 		/ "grammar.md";
 }
 
+std::filesystem::path RepoRoot()
+{
+	return std::filesystem::path(__FILE__)
+		.parent_path()
+		.parent_path()
+		.parent_path()
+		.parent_path()
+		.parent_path();
+}
+
 std::string RunProgram(const std::filesystem::path& entryFile)
 {
 	std::string emptySource;
@@ -79,6 +89,36 @@ TEST(ModuleImportIntegrationTest, ImportedModuleExecutesThroughCompilerAndVM)
 	const auto output = RunProgram(root / "samples" / "main.aura");
 	EXPECT_THAT(output, ::testing::HasSubstr("42"));
 	std::filesystem::remove_all(root);
+}
+
+TEST(ModuleImportIntegrationTest, SampleBubbleSortExecutes)
+{
+	const auto output = RunProgram(RepoRoot() / "samples" / "bubblesort.aura");
+	EXPECT_THAT(output, ::testing::HasSubstr("Original list:"));
+	EXPECT_THAT(output, ::testing::HasSubstr("[1, 2, 5, 5, 6, 9]"));
+}
+
+TEST(ModuleImportIntegrationTest, SampleClosuresExecutes)
+{
+	const auto output = RunProgram(RepoRoot() / "samples" / "closures.aura");
+	EXPECT_THAT(output, ::testing::HasSubstr("Closure add10(7):"));
+	EXPECT_THAT(output, ::testing::HasSubstr("17"));
+	EXPECT_THAT(output, ::testing::HasSubstr("[11, 12, 9, 12]"));
+}
+
+TEST(ModuleImportIntegrationTest, SampleFactorialExecutes)
+{
+	const auto output = RunProgram(RepoRoot() / "samples" / "factorial.aura");
+	EXPECT_THAT(output, ::testing::HasSubstr("factorial(5) ="));
+	EXPECT_THAT(output, ::testing::HasSubstr("120"));
+}
+
+TEST(ModuleImportIntegrationTest, SampleModuleNamespaceExecutes)
+{
+	const auto output = RunProgram(RepoRoot() / "samples" / "module_namespace.aura");
+	EXPECT_THAT(output, ::testing::HasSubstr("Imported module samples.math_utils"));
+	EXPECT_THAT(output, ::testing::HasSubstr("27"));
+	EXPECT_THAT(output, ::testing::HasSubstr("13"));
 }
 
 TEST(ModuleImportIntegrationTest, ImportedClosureFactoryExecutesAcrossFiles)
@@ -255,13 +295,101 @@ TEST(ModuleImportIntegrationTest, ExportedFunctionAndVarExecuteAcrossFiles)
 	std::filesystem::remove_all(root);
 }
 
-TEST(ModuleImportIntegrationTest, BuiltinRuntimeModuleExecutesThroughCompilerAndVM)
+TEST(ModuleImportIntegrationTest, BuiltinCoreModuleExecutesThroughCompilerAndVM)
 {
 	const auto root = MakeTempRoot();
 	WriteFile(
 		root / "samples" / "main.aura",
 		"module samples.main;"
-		"import std.runtime as rt;"
+		"import std.core as std;"
+		"var values = std.sort([5, 1, 3]);"
+		"print values[0];"
+		"print std.max(values[1], values[2]);"
+		"print std.min(7, std.abs(-4));"
+		"print std.len(\"aura\");");
+
+	const auto output = RunProgram(root / "samples" / "main.aura");
+	EXPECT_THAT(output, ::testing::HasSubstr("1"));
+	EXPECT_THAT(output, ::testing::HasSubstr("5"));
+	EXPECT_THAT(output, ::testing::HasSubstr("4"));
+	EXPECT_THAT(output, ::testing::HasSubstr("4"));
+	std::filesystem::remove_all(root);
+}
+
+TEST(ModuleImportIntegrationTest, BuiltinStdModulesExecuteThroughCompilerAndVM)
+{
+	const auto root = MakeTempRoot();
+	WriteFile(
+		root / "samples" / "main.aura",
+		"module samples.main;"
+		"import std.math as math;"
+		"import std.array as arr;"
+		"import std.text as text;"
+		"var values = [8, 2];"
+		"arr.push(values, 5);"
+		"var sorted = arr.sort(values);"
+		"print arr.len(sorted);"
+		"print arr.pop(sorted);"
+		"print math.clamp(math.abs(-12), 0, 10);"
+		"print text.concat(\"au\", \"ra\");"
+		"print text.contains(\"aura\", \"ur\");"
+		"print text.to_string(math.min(9, 4));");
+
+	const auto output = RunProgram(root / "samples" / "main.aura");
+	EXPECT_THAT(output, ::testing::HasSubstr("3"));
+	EXPECT_THAT(output, ::testing::HasSubstr("8"));
+	EXPECT_THAT(output, ::testing::HasSubstr("10"));
+	EXPECT_THAT(output, ::testing::HasSubstr("aura"));
+	EXPECT_THAT(output, ::testing::HasSubstr("true"));
+	EXPECT_THAT(output, ::testing::HasSubstr("4"));
+	std::filesystem::remove_all(root);
+}
+
+TEST(ModuleImportIntegrationTest, BuiltinIoAndLogModulesExecuteThroughCompilerAndVM)
+{
+	const auto root = MakeTempRoot();
+	WriteFile(
+		root / "samples" / "main.aura",
+		"module samples.main;"
+		"import std.io as io;"
+		"import std.log as log;"
+		"io.print(\"a\", 1, true);"
+		"io.println(\"b\", 2);"
+		"io.printf(\"%s=%d\", \"x\", 42);"
+		"log.Info(\"ready\", 7);"
+		"log.Warn(\"warn\", false);");
+
+	const auto output = RunProgram(root / "samples" / "main.aura");
+	EXPECT_THAT(output, ::testing::HasSubstr("a 1 true"));
+	EXPECT_THAT(output, ::testing::HasSubstr("b 2"));
+	EXPECT_THAT(output, ::testing::HasSubstr("x=42"));
+	EXPECT_THAT(output, ::testing::HasSubstr("[INFO] ready 7"));
+	EXPECT_THAT(output, ::testing::HasSubstr("[WARN] warn false"));
+	std::filesystem::remove_all(root);
+}
+
+TEST(ModuleImportIntegrationTest, BuiltinLogFatalFailsThroughCompilerAndVM)
+{
+	const auto root = MakeTempRoot();
+	WriteFile(
+		root / "samples" / "main.aura",
+		"module samples.main;"
+		"import std.log as log;"
+		"log.Fatal(\"boom\", 7);");
+
+	const auto output = RunProgram(root / "samples" / "main.aura");
+	EXPECT_THAT(output, ::testing::HasSubstr("[FATAL] boom 7"));
+	EXPECT_THAT(output, ::testing::HasSubstr("Error: Fatal log invoked"));
+	std::filesystem::remove_all(root);
+}
+
+TEST(ModuleImportIntegrationTest, BuiltinMemoryModuleExecutesThroughCompilerAndVM)
+{
+	const auto root = MakeTempRoot();
+	WriteFile(
+		root / "samples" / "main.aura",
+		"module samples.main;"
+		"import std.memory as rt;"
 		"var mem = rt.alloc(16);"
 		"print rt.active_allocations();"
 		"print rt.active_bytes();"
@@ -278,13 +406,36 @@ TEST(ModuleImportIntegrationTest, BuiltinRuntimeModuleExecutesThroughCompilerAnd
 	std::filesystem::remove_all(root);
 }
 
-TEST(ModuleImportIntegrationTest, BuiltinRuntimeUnsafePointerUseExecutesThroughCompilerAndVM)
+TEST(ModuleImportIntegrationTest, BuiltinMemoryAndSyncModulesExecuteThroughCompilerAndVM)
 {
 	const auto root = MakeTempRoot();
 	WriteFile(
 		root / "samples" / "main.aura",
 		"module samples.main;"
-		"import std.runtime as rt;"
+		"import std.memory as mem;"
+		"import std.sync as sync;"
+		"var block = mem.alloc(8);"
+		"var t = sync.spawn();"
+		"var m = sync.mutex();"
+		"print sync.lock(t, m);"
+		"print sync.is_locked(m);"
+		"mem.free(block);"
+		"mem.assert_no_leaks();"
+		"print mem.active_allocations();");
+
+	const auto output = RunProgram(root / "samples" / "main.aura");
+	EXPECT_THAT(output, ::testing::HasSubstr("true"));
+	EXPECT_THAT(output, ::testing::HasSubstr("0"));
+	std::filesystem::remove_all(root);
+}
+
+TEST(ModuleImportIntegrationTest, BuiltinMemoryUnsafePointerUseExecutesThroughCompilerAndVM)
+{
+	const auto root = MakeTempRoot();
+	WriteFile(
+		root / "samples" / "main.aura",
+		"module samples.main;"
+		"import std.memory as rt;"
 		"unsafe {"
 		"  var mem = rt.alloc(8);"
 		"  *mem = 42;"

@@ -19,7 +19,14 @@ std::string ReadSource(const std::istream& input);
 
 bool IsBuiltinModuleQualifiedName(const std::string& qualifiedName)
 {
-	return qualifiedName == "std.runtime" || qualifiedName == "std.sync";
+	return qualifiedName == "std.core"
+		|| qualifiedName == "std.io"
+		|| qualifiedName == "std.log"
+		|| qualifiedName == "std.math"
+		|| qualifiedName == "std.array"
+		|| qualifiedName == "std.text"
+		|| qualifiedName == "std.memory"
+		|| qualifiedName == "std.sync";
 }
 
 template <typename ParseFn, typename ModuleCache>
@@ -455,7 +462,8 @@ VM::Execution::Chunk Compiler::CompileToChunk(const std::istream& input) const
 
 bool Compiler::CompileFile(const std::filesystem::path& inputPath, std::ostream& output) const
 {
-	std::ifstream input(inputPath);
+	const auto normalizedInputPath = std::filesystem::weakly_canonical(inputPath);
+	std::ifstream input(normalizedInputPath);
 	if (!input.is_open())
 	{
 		std::cerr << "Compilation failed: Could not open source file." << std::endl;
@@ -466,7 +474,7 @@ bool Compiler::CompileFile(const std::filesystem::path& inputPath, std::ostream&
 	ModuleGraphLoader loader(
 		[this](const std::string& source) { return ParseSourceToAst(source); },
 		m_moduleCache);
-	const auto root = loader.LoadEntryProgramTree(code, inputPath);
+	const auto root = loader.LoadEntryProgramTree(code, normalizedInputPath);
 	if (!root)
 	{
 		std::cerr << "Compilation failed: Syntax Error." << std::endl;
@@ -480,7 +488,8 @@ bool Compiler::CompileFile(const std::filesystem::path& inputPath, std::ostream&
 
 VM::Execution::Chunk Compiler::CompileFileToChunk(const std::filesystem::path& inputPath) const
 {
-	std::ifstream input(inputPath);
+	const auto normalizedInputPath = std::filesystem::weakly_canonical(inputPath);
+	std::ifstream input(normalizedInputPath);
 	if (!input.is_open())
 	{
 		throw std::runtime_error("Could not open source file: " + inputPath.string());
@@ -490,7 +499,7 @@ VM::Execution::Chunk Compiler::CompileFileToChunk(const std::filesystem::path& i
 	ModuleGraphLoader loader(
 		[this](const std::string& source) { return ParseSourceToAst(source); },
 		m_moduleCache);
-	const auto root = loader.LoadEntryProgramTree(code, inputPath);
+	const auto root = loader.LoadEntryProgramTree(code, normalizedInputPath);
 	if (!root)
 	{
 		throw std::runtime_error("Syntax error during compilation");

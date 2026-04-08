@@ -1,7 +1,5 @@
 #pragma once
 
-#include "../core/values/Value.h"
-
 namespace VM::Execution
 {
 class ExecutionContext;
@@ -10,10 +8,10 @@ class ExecutionContext;
 namespace VM::Runtime
 {
 
-class DiagnosticsModule
+class ArrayModule
 {
 public:
-	static constexpr const char* ModuleName() { return "std.runtime"; }
+	static constexpr const char* ModuleName() { return "std.array"; }
 
 	static void Install(Execution::ExecutionContext& context);
 };

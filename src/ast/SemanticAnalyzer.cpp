@@ -295,15 +295,18 @@ void SemanticAnalyzer::Analyze(ASTNode* root)
 void SemanticAnalyzer::RegisterBuiltinModules()
 {
 	auto registerBuiltinFunction = [this](
-									const std::string& moduleName,
-									const std::string& functionName,
-									std::vector<TypeInfo> params,
-									TypeInfo resultType) {
-		m_modules.memberTypes[moduleName][functionName] = TypeInfo::Function(std::move(params), std::move(resultType));
+									   const std::string& moduleName,
+									   const std::string& functionName,
+									   std::vector<TypeInfo> params,
+									   TypeInfo resultType,
+									   bool variadic = false,
+									   std::optional<TypeInfo> variadicParam = std::nullopt) {
+		m_modules.memberTypes[moduleName][functionName]
+			= TypeInfo::Function(std::move(params), std::move(resultType), variadic, std::move(variadicParam));
 		m_modules.exports[moduleName].insert(functionName);
 	};
 
-	const std::string moduleName = "std.runtime";
+	const std::string moduleName = "std.memory";
 	registerBuiltinFunction(moduleName, "active_allocations", {}, TypeInfo::Int());
 	registerBuiltinFunction(moduleName, "active_bytes", {}, TypeInfo::Int());
 	registerBuiltinFunction(moduleName, "total_allocations", {}, TypeInfo::Int());
@@ -316,6 +319,48 @@ void SemanticAnalyzer::RegisterBuiltinModules()
 	registerBuiltinFunction(moduleName, "assert_no_leaks", {}, TypeInfo::Bool());
 	registerBuiltinFunction(moduleName, "alloc", { TypeInfo::Int() }, TypeInfo::PointerTo(TypeInfo::Unknown()));
 	registerBuiltinFunction(moduleName, "free", { TypeInfo::Unknown() }, TypeInfo::Void());
+
+	const std::string coreModuleName = "std.core";
+	registerBuiltinFunction(coreModuleName, "len", { TypeInfo::Unknown() }, TypeInfo::Int());
+	registerBuiltinFunction(coreModuleName, "max", { TypeInfo::Unknown(), TypeInfo::Unknown() }, TypeInfo::Unknown());
+	registerBuiltinFunction(coreModuleName, "min", { TypeInfo::Unknown(), TypeInfo::Unknown() }, TypeInfo::Unknown());
+	registerBuiltinFunction(coreModuleName, "abs", { TypeInfo::Unknown() }, TypeInfo::Unknown());
+	registerBuiltinFunction(coreModuleName, "sort", { TypeInfo::ArrayOf(TypeInfo::Unknown()) }, TypeInfo::ArrayOf(TypeInfo::Unknown()));
+	registerBuiltinFunction(coreModuleName, "push", { TypeInfo::ArrayOf(TypeInfo::Unknown()), TypeInfo::Unknown() }, TypeInfo::ArrayOf(TypeInfo::Unknown()));
+	registerBuiltinFunction(coreModuleName, "pop", { TypeInfo::ArrayOf(TypeInfo::Unknown()) }, TypeInfo::Unknown());
+	registerBuiltinFunction(coreModuleName, "concat", { TypeInfo::String(), TypeInfo::String() }, TypeInfo::String());
+	registerBuiltinFunction(coreModuleName, "contains", { TypeInfo::String(), TypeInfo::String() }, TypeInfo::Bool());
+	registerBuiltinFunction(coreModuleName, "to_string", { TypeInfo::Unknown() }, TypeInfo::String());
+	registerBuiltinFunction(coreModuleName, "clamp", { TypeInfo::Unknown(), TypeInfo::Unknown(), TypeInfo::Unknown() }, TypeInfo::Unknown());
+
+	const std::string ioModuleName = "std.io";
+	registerBuiltinFunction(ioModuleName, "print", {}, TypeInfo::Void(), true, TypeInfo::Unknown());
+	registerBuiltinFunction(ioModuleName, "println", {}, TypeInfo::Void(), true, TypeInfo::Unknown());
+	registerBuiltinFunction(ioModuleName, "printf", { TypeInfo::String() }, TypeInfo::Void(), true, TypeInfo::Unknown());
+
+	const std::string mathModuleName = "std.math";
+	registerBuiltinFunction(mathModuleName, "max", { TypeInfo::Unknown(), TypeInfo::Unknown() }, TypeInfo::Unknown());
+	registerBuiltinFunction(mathModuleName, "min", { TypeInfo::Unknown(), TypeInfo::Unknown() }, TypeInfo::Unknown());
+	registerBuiltinFunction(mathModuleName, "abs", { TypeInfo::Unknown() }, TypeInfo::Unknown());
+	registerBuiltinFunction(mathModuleName, "clamp", { TypeInfo::Unknown(), TypeInfo::Unknown(), TypeInfo::Unknown() }, TypeInfo::Unknown());
+
+	const std::string arrayModuleName = "std.array";
+	registerBuiltinFunction(arrayModuleName, "len", { TypeInfo::ArrayOf(TypeInfo::Unknown()) }, TypeInfo::Int());
+	registerBuiltinFunction(arrayModuleName, "sort", { TypeInfo::ArrayOf(TypeInfo::Unknown()) }, TypeInfo::ArrayOf(TypeInfo::Unknown()));
+	registerBuiltinFunction(arrayModuleName, "push", { TypeInfo::ArrayOf(TypeInfo::Unknown()), TypeInfo::Unknown() }, TypeInfo::ArrayOf(TypeInfo::Unknown()));
+	registerBuiltinFunction(arrayModuleName, "pop", { TypeInfo::ArrayOf(TypeInfo::Unknown()) }, TypeInfo::Unknown());
+
+	const std::string stringModuleName = "std.text";
+	registerBuiltinFunction(stringModuleName, "len", { TypeInfo::String() }, TypeInfo::Int());
+	registerBuiltinFunction(stringModuleName, "concat", { TypeInfo::String(), TypeInfo::String() }, TypeInfo::String());
+	registerBuiltinFunction(stringModuleName, "contains", { TypeInfo::String(), TypeInfo::String() }, TypeInfo::Bool());
+	registerBuiltinFunction(stringModuleName, "to_string", { TypeInfo::Unknown() }, TypeInfo::String());
+
+	const std::string logModuleName = "std.log";
+	registerBuiltinFunction(logModuleName, "Error", {}, TypeInfo::Void(), true, TypeInfo::Unknown());
+	registerBuiltinFunction(logModuleName, "Warn", {}, TypeInfo::Void(), true, TypeInfo::Unknown());
+	registerBuiltinFunction(logModuleName, "Info", {}, TypeInfo::Void(), true, TypeInfo::Unknown());
+	registerBuiltinFunction(logModuleName, "Fatal", {}, TypeInfo::Void(), true, TypeInfo::Unknown());
 
 	const std::string syncModuleName = "std.sync";
 	registerBuiltinFunction(syncModuleName, "current_thread", {}, TypeInfo::Unknown());
@@ -585,6 +630,16 @@ bool SemanticAnalyzer::IsAssignable(const TypeInfo& expected, const TypeInfo& ac
 		return true;
 	}
 
+	if ((expected.kind == TypeKind::Array || expected.kind == TypeKind::Pointer)
+		&& expected.kind == actual.kind)
+	{
+		if (!expected.element || !actual.element)
+		{
+			return true;
+		}
+		return IsAssignable(*expected.element, *actual.element);
+	}
+
 	if (expected.kind == TypeKind::Float && actual.kind == TypeKind::Int)
 	{
 		return true;
@@ -771,10 +826,12 @@ void SemanticAnalyzer::CallAnalyzer::AnalyzeFunctionCall(
 	const TypeInfo& funcType,
 	const std::vector<ASTNodePtr>& args) const
 {
-	if (args.size() != funcType.params.size())
+	if ((!funcType.variadic && args.size() != funcType.params.size())
+		|| (funcType.variadic && args.size() < funcType.params.size()))
 	{
 		throw std::runtime_error(
 			"Function call expects "
+			+ std::string(funcType.variadic ? "at least " : "")
 			+ std::to_string(funcType.params.size())
 			+ " arguments, but got " + std::to_string(args.size()));
 	}
@@ -783,7 +840,15 @@ void SemanticAnalyzer::CallAnalyzer::AnalyzeFunctionCall(
 	for (size_t i = 0; i < args.size(); ++i)
 	{
 		const TypeInfo argType = analyzer.VisitAndGet(args[i].get());
-		TypeInfo expectedType = funcType.params[i];
+		TypeInfo expectedType = TypeInfo::Unknown();
+		if (i < funcType.params.size())
+		{
+			expectedType = funcType.params[i];
+		}
+		else if (funcType.variadic && funcType.variadicParam)
+		{
+			expectedType = *funcType.variadicParam;
+		}
 		if (!analyzer.BindGenericType(expectedType, argType, genericBindings) && argType.kind != TypeKind::Unknown)
 		{
 			throw std::runtime_error(
@@ -999,7 +1064,12 @@ SemanticAnalyzer::TypeInfo SemanticAnalyzer::TypeResolver::Substitute(
 		{
 			params.push_back(Substitute(param, bindings));
 		}
-		return TypeInfo::Function(params, Substitute(*type.ret, bindings));
+		std::optional<TypeInfo> variadicParam = std::nullopt;
+		if (type.variadicParam)
+		{
+			variadicParam = Substitute(*type.variadicParam, bindings);
+		}
+		return TypeInfo::Function(params, Substitute(*type.ret, bindings), type.variadic, std::move(variadicParam));
 	}
 
 	return type;
@@ -1067,6 +1137,10 @@ bool SemanticAnalyzer::TypeResolver::Bind(
 
 	if (expected.kind == TypeKind::Function && actual.kind == TypeKind::Function && expected.ret && actual.ret)
 	{
+		if (expected.variadic != actual.variadic)
+		{
+			return false;
+		}
 		if (expected.params.size() != actual.params.size())
 		{
 			return false;
@@ -1074,6 +1148,18 @@ bool SemanticAnalyzer::TypeResolver::Bind(
 		for (size_t i = 0; i < expected.params.size(); ++i)
 		{
 			if (!Bind(expected.params[i], actual.params[i], bindings))
+			{
+				return false;
+			}
+		}
+		if (expected.variadic)
+		{
+			if (!expected.variadicParam || !actual.variadicParam)
+			{
+				return expected.variadicParam == actual.variadicParam
+					&& Bind(*expected.ret, *actual.ret, bindings);
+			}
+			if (!Bind(*expected.variadicParam, *actual.variadicParam, bindings))
 			{
 				return false;
 			}

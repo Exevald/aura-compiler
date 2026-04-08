@@ -1,6 +1,7 @@
 #include "DiagnosticsModule.h"
-#include "../core/values/ValueHelper.h"
-#include "../runtime/ExecutionContext.h"
+#include "../../core/values/ValueHelper.h"
+#include "../ExecutionContext.h"
+#include "../NativeModuleSupport.h"
 
 #include <cstdint>
 #include <stdexcept>
@@ -17,7 +18,6 @@ using Core::FunctionPtr;
 using Core::InstancePtr;
 using Core::IteratorPtr;
 using Core::ModulePtr;
-using Core::NativeFunction;
 using Core::NativeFunctionPtr;
 using Core::PointerPtr;
 using Core::StringPtr;
@@ -27,16 +27,6 @@ using Execution::ExecutionContext;
 
 namespace
 {
-
-template <typename Fn>
-NativeFunctionPtr MakeNative(const std::string& name, const int arity, Fn&& fn)
-{
-	auto native = std::make_shared<NativeFunction>();
-	native->name = name;
-	native->arity = arity;
-	native->invoke = std::forward<Fn>(fn);
-	return native;
-}
 
 bool IsSendValue(const Value& value, std::unordered_set<const void*>& visited);
 bool IsSyncValue(const Value& value, std::unordered_set<const void*>& visited);
@@ -330,195 +320,199 @@ int64_t EstimateDeepSize(const Value& value, std::unordered_set<const void*>& vi
 
 void DiagnosticsModule::Install(ExecutionContext& context)
 {
-	auto module = std::make_shared<VM::Core::Module>();
-	module->name = ModuleName();
-	context.DefineGlobal(module->name, module);
+	const auto installPrefix = [&context](const std::string& moduleName) {
+		auto module = std::make_shared<VM::Core::Module>();
+		module->name = moduleName;
+		context.DefineGlobal(module->name, module);
 
-	context.DefineGlobal(
-		std::string(ModuleName()) + ".active_allocations",
-		MakeNative(
-			"active_allocations",
-			0,
-			[](const ExecutionContext& ctx, const std::vector<Value>&) -> Value {
-				return static_cast<int64_t>(ctx.GetAllocationStats().activeAllocations);
-			}));
+		context.DefineGlobal(
+			moduleName + ".active_allocations",
+			MakeNative(
+				"active_allocations",
+				0,
+				[](const ExecutionContext& ctx, const std::vector<Value>&) -> Value {
+					return static_cast<int64_t>(ctx.GetAllocationStats().activeAllocations);
+				}));
 
-	context.DefineGlobal(
-		std::string(ModuleName()) + ".active_bytes",
-		MakeNative(
-			"active_bytes",
-			0,
-			[](const ExecutionContext& ctx, const std::vector<Value>&) -> Value {
-				return static_cast<int64_t>(ctx.GetAllocationStats().activeBytes);
-			}));
+		context.DefineGlobal(
+			moduleName + ".active_bytes",
+			MakeNative(
+				"active_bytes",
+				0,
+				[](const ExecutionContext& ctx, const std::vector<Value>&) -> Value {
+					return static_cast<int64_t>(ctx.GetAllocationStats().activeBytes);
+				}));
 
-	context.DefineGlobal(
-		std::string(ModuleName()) + ".total_allocations",
-		MakeNative(
-			"total_allocations",
-			0,
-			[](const ExecutionContext& ctx, const std::vector<Value>&) -> Value {
-				return static_cast<int64_t>(ctx.GetAllocationStats().totalAllocations);
-			}));
+		context.DefineGlobal(
+			moduleName + ".total_allocations",
+			MakeNative(
+				"total_allocations",
+				0,
+				[](const ExecutionContext& ctx, const std::vector<Value>&) -> Value {
+					return static_cast<int64_t>(ctx.GetAllocationStats().totalAllocations);
+				}));
 
-	context.DefineGlobal(
-		std::string(ModuleName()) + ".total_bytes",
-		MakeNative(
-			"total_bytes",
-			0,
-			[](const ExecutionContext& ctx, const std::vector<Value>&) -> Value {
-				return static_cast<int64_t>(ctx.GetAllocationStats().totalBytes);
-			}));
+		context.DefineGlobal(
+			moduleName + ".total_bytes",
+			MakeNative(
+				"total_bytes",
+				0,
+				[](const ExecutionContext& ctx, const std::vector<Value>&) -> Value {
+					return static_cast<int64_t>(ctx.GetAllocationStats().totalBytes);
+				}));
 
-	context.DefineGlobal(
-		std::string(ModuleName()) + ".deep_size",
-		MakeNative(
-			"deep_size",
-			1,
-			[](ExecutionContext&, const std::vector<Value>& args) -> Value {
-				std::unordered_set<const void*> visited;
-				return EstimateDeepSize(args[0], visited);
-			}));
+		context.DefineGlobal(
+			moduleName + ".deep_size",
+			MakeNative(
+				"deep_size",
+				1,
+				[](ExecutionContext&, const std::vector<Value>& args) -> Value {
+					std::unordered_set<const void*> visited;
+					return EstimateDeepSize(args[0], visited);
+				}));
 
-	context.DefineGlobal(
-		std::string(ModuleName()) + ".is_send",
-		MakeNative(
-			"is_send",
-			1,
-			[](ExecutionContext&, const std::vector<Value>& args) -> Value {
-				std::unordered_set<const void*> visited;
-				return IsSendValue(args[0], visited);
-			}));
+		context.DefineGlobal(
+			moduleName + ".is_send",
+			MakeNative(
+				"is_send",
+				1,
+				[](ExecutionContext&, const std::vector<Value>& args) -> Value {
+					std::unordered_set<const void*> visited;
+					return IsSendValue(args[0], visited);
+				}));
 
-	context.DefineGlobal(
-		std::string(ModuleName()) + ".is_sync",
-		MakeNative(
-			"is_sync",
-			1,
-			[](ExecutionContext&, const std::vector<Value>& args) -> Value {
-				std::unordered_set<const void*> visited;
-				return IsSyncValue(args[0], visited);
-			}));
+		context.DefineGlobal(
+			moduleName + ".is_sync",
+			MakeNative(
+				"is_sync",
+				1,
+				[](ExecutionContext&, const std::vector<Value>& args) -> Value {
+					std::unordered_set<const void*> visited;
+					return IsSyncValue(args[0], visited);
+				}));
 
-	context.DefineGlobal(
-		std::string(ModuleName()) + ".assert_send",
-		MakeNative(
-			"assert_send",
-			1,
-			[](ExecutionContext& ctx, const std::vector<Value>& args) -> Value {
-				if (std::unordered_set<const void*> visited;
-					!IsSendValue(args[0], visited))
-				{
-					ctx.RaiseError("Value is not Send-safe");
-					return std::monostate{};
-				}
-				return true;
-			}));
-
-	context.DefineGlobal(
-		std::string(ModuleName()) + ".assert_sync",
-		MakeNative(
-			"assert_sync",
-			1,
-			[](ExecutionContext& ctx, const std::vector<Value>& args) -> Value {
-				if (std::unordered_set<const void*> visited;
-					!IsSyncValue(args[0], visited))
-				{
-					ctx.RaiseError("Value is not Sync-safe");
-					return std::monostate{};
-				}
-				return true;
-			}));
-
-	context.DefineGlobal(
-		std::string(ModuleName()) + ".assert_no_leaks",
-		MakeNative(
-			"assert_no_leaks",
-			0,
-			[](ExecutionContext& ctx, const std::vector<Value>&) -> Value {
-				if (ctx.GetAllocationStats().activeAllocations != 0)
-				{
-					ctx.RaiseError(
-						"Memory leak detected: "
-						+ std::to_string(ctx.GetAllocationStats().activeAllocations)
-						+ " allocation(s) still active");
-					return std::monostate{};
-				}
-				return true;
-			}));
-
-	context.DefineGlobal(
-		std::string(ModuleName()) + ".alloc",
-		MakeNative(
-			"alloc",
-			1,
-			[](ExecutionContext& ctx, const std::vector<Value>& args) -> Value {
-				const auto byteCount = ValueHelper::As<int64_t>(args[0]);
-				if (byteCount <= 0)
-				{
-					ctx.RaiseError("alloc expects a positive byte count");
-					return std::monostate{};
-				}
-
-				auto cell = std::make_shared<Value>(std::monostate{});
-				auto alive = std::make_shared<bool>(true);
-				const void* raw = ctx.Allocate(byteCount);
-
-				auto ptr = std::make_shared<VM::Core::Pointer>();
-				ptr->targetName = "&heap:" + std::to_string(reinterpret_cast<uintptr_t>(raw));
-				ptr->get = [cell, alive]() -> Value {
-					if (!*alive)
+		context.DefineGlobal(
+			moduleName + ".assert_send",
+			MakeNative(
+				"assert_send",
+				1,
+				[](ExecutionContext& ctx, const std::vector<Value>& args) -> Value {
+					if (std::unordered_set<const void*> visited;
+						!IsSendValue(args[0], visited))
 					{
-						throw std::runtime_error("Use after free");
+						ctx.RaiseError("Value is not Send-safe");
+						return std::monostate{};
 					}
-					return *cell;
-				};
-				ptr->set = [cell, alive](Value value) {
-					if (!*alive)
+					return true;
+				}));
+
+		context.DefineGlobal(
+			moduleName + ".assert_sync",
+			MakeNative(
+				"assert_sync",
+				1,
+				[](ExecutionContext& ctx, const std::vector<Value>& args) -> Value {
+					if (std::unordered_set<const void*> visited;
+						!IsSyncValue(args[0], visited))
 					{
-						throw std::runtime_error("Use after free");
+						ctx.RaiseError("Value is not Sync-safe");
+						return std::monostate{};
 					}
-					*cell = std::move(value);
-				};
-				ptr->deallocate = [&ctx, alive, raw]() {
-					if (!*alive)
+					return true;
+				}));
+
+		context.DefineGlobal(
+			moduleName + ".assert_no_leaks",
+			MakeNative(
+				"assert_no_leaks",
+				0,
+				[](ExecutionContext& ctx, const std::vector<Value>&) -> Value {
+					if (ctx.GetAllocationStats().activeAllocations != 0)
 					{
-						return false;
+						ctx.RaiseError(
+							"Memory leak detected: "
+							+ std::to_string(ctx.GetAllocationStats().activeAllocations)
+							+ " allocation(s) still active");
+						return std::monostate{};
+					}
+					return true;
+				}));
+
+		context.DefineGlobal(
+			moduleName + ".alloc",
+			MakeNative(
+				"alloc",
+				1,
+				[](ExecutionContext& ctx, const std::vector<Value>& args) -> Value {
+					const auto byteCount = ValueHelper::As<int64_t>(args[0]);
+					if (byteCount <= 0)
+					{
+						ctx.RaiseError("alloc expects a positive byte count");
+						return std::monostate{};
 					}
 
-					*alive = false;
-					return ctx.Release(raw);
-				};
-				return ptr;
-			}));
+					auto cell = std::make_shared<Value>(std::monostate{});
+					auto alive = std::make_shared<bool>(true);
+					const void* raw = ctx.Allocate(byteCount);
 
-	context.DefineGlobal(
-		std::string(ModuleName()) + ".free",
-		MakeNative(
-			"free",
-			1,
-			[](ExecutionContext& ctx, const std::vector<Value>& args) -> Value {
-				if (!std::holds_alternative<PointerPtr>(args[0]))
-				{
-					ctx.RaiseError("free expects a pointer");
+					auto ptr = std::make_shared<VM::Core::Pointer>();
+					ptr->targetName = "&heap:" + std::to_string(reinterpret_cast<uintptr_t>(raw));
+					ptr->get = [cell, alive]() -> Value {
+						if (!*alive)
+						{
+							throw std::runtime_error("Use after free");
+						}
+						return *cell;
+					};
+					ptr->set = [cell, alive](Value value) {
+						if (!*alive)
+						{
+							throw std::runtime_error("Use after free");
+						}
+						*cell = std::move(value);
+					};
+					ptr->deallocate = [&ctx, alive, raw]() {
+						if (!*alive)
+						{
+							return false;
+						}
+
+						*alive = false;
+						return ctx.Release(raw);
+					};
+					return ptr;
+				}));
+
+		context.DefineGlobal(
+			moduleName + ".free",
+			MakeNative(
+				"free",
+				1,
+				[](ExecutionContext& ctx, const std::vector<Value>& args) -> Value {
+					if (!std::holds_alternative<PointerPtr>(args[0]))
+					{
+						ctx.RaiseError("free expects a pointer");
+						return std::monostate{};
+					}
+
+					const auto& pointer = std::get<PointerPtr>(args[0]);
+					if (!pointer || !pointer->deallocate)
+					{
+						ctx.RaiseError("Pointer is not owned by std.memory.alloc");
+						return std::monostate{};
+					}
+
+					if (!pointer->deallocate())
+					{
+						ctx.RaiseError("Double free detected");
+						return std::monostate{};
+					}
+
 					return std::monostate{};
-				}
+				}));
+	};
 
-				const auto& pointer = std::get<PointerPtr>(args[0]);
-				if (!pointer || !pointer->deallocate)
-				{
-					ctx.RaiseError("Pointer is not owned by std.runtime.alloc");
-					return std::monostate{};
-				}
-
-				if (!pointer->deallocate())
-				{
-					ctx.RaiseError("Double free detected");
-					return std::monostate{};
-				}
-
-				return std::monostate{};
-			}));
+	installPrefix(ModuleName());
 }
 
 } // namespace VM::Runtime

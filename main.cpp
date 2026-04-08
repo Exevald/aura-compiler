@@ -42,15 +42,16 @@ int main(int argc, char* argv[])
 	}
 
 	std::string inputPath = argv[2];
-	fs::path p(inputPath);
+	fs::path normalizedInputPath = fs::weakly_canonical(fs::absolute(inputPath));
+	fs::path p(normalizedInputPath);
 	std::string outputExe = p.stem().string();
 
 	try
 	{
-		std::ifstream sourceFile(inputPath);
+		std::ifstream sourceFile(normalizedInputPath);
 		if (!sourceFile.is_open())
 		{
-			throw std::runtime_error("Could not open source file: " + inputPath);
+			throw std::runtime_error("Could not open source file: " + normalizedInputPath.string());
 		}
 		std::stringstream buffer;
 		buffer << sourceFile.rdbuf();
@@ -67,15 +68,15 @@ int main(int argc, char* argv[])
 		{
 			std::ofstream binary(outputExe + ".aurabc", std::ios::binary);
 
-			std::cout << "Building " << inputPath << "..." << std::endl;
-			if (compiler.CompileFile(inputPath, binary))
+			std::cout << "Building " << normalizedInputPath << "..." << std::endl;
+			if (compiler.CompileFile(normalizedInputPath, binary))
 			{
 				std::cout << "Success! Created " << outputExe << ".aurabc" << std::endl;
 			}
 		}
 		else if (command == "run")
 		{
-			auto chunk = compiler.CompileFileToChunk(inputPath);
+			auto chunk = compiler.CompileFileToChunk(normalizedInputPath);
 
 			VM::Execution::VirtualMachine vm;
 			vm.Interpret(&chunk);

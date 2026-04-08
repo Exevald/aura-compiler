@@ -939,9 +939,24 @@ ASTNodePtr ASTBuilder::SimplifyIdentifierExpr(const RawNode& raw)
 			if (const std::string type = dynamic_cast<LeafNode*>(trailer->children[0].get())->value;
 				type == ".")
 			{
+				std::string memberName;
+				if (const auto* memberLeaf = dynamic_cast<LeafNode*>(trailer->children[1].get()))
+				{
+					memberName = memberLeaf->value;
+				}
+				else if (const auto* memberRaw = dynamic_cast<RawNode*>(trailer->children[1].get()))
+				{
+					if (!memberRaw->children.empty())
+					{
+						if (const auto* nestedLeaf = dynamic_cast<LeafNode*>(memberRaw->children[0].get()))
+						{
+							memberName = nestedLeaf->value;
+						}
+					}
+				}
 				expr = std::make_unique<MemberAccessNode>(
 					std::move(expr),
-					dynamic_cast<LeafNode*>(trailer->children[1].get())->value);
+					memberName);
 			}
 			else if (type == "(")
 			{

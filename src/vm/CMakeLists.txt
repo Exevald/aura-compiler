@@ -19,8 +19,14 @@ add_executable(
         core/values/ValueHelper.cpp
         runtime/StringPool.cpp
         runtime/ExecutionContext.cpp
-        runtime/DiagnosticsModule.cpp
-        runtime/SyncModule.cpp
+        runtime/stdlib/MathModule.cpp
+        runtime/stdlib/ArrayModule.cpp
+        runtime/stdlib/StringModule.cpp
+        runtime/stdlib/IOModule.cpp
+        runtime/stdlib/LogModule.cpp
+        runtime/stdlib/CoreModule.cpp
+        runtime/stdlib/DiagnosticsModule.cpp
+        runtime/stdlib/SyncModule.cpp
         execution/Chunk.cpp
         execution/VirtualMachine.cpp
 )
@@ -30,8 +36,14 @@ add_library(
         core/values/ValueHelper.cpp
         runtime/StringPool.cpp
         runtime/ExecutionContext.cpp
-        runtime/DiagnosticsModule.cpp
-        runtime/SyncModule.cpp
+        runtime/stdlib/MathModule.cpp
+        runtime/stdlib/ArrayModule.cpp
+        runtime/stdlib/StringModule.cpp
+        runtime/stdlib/IOModule.cpp
+        runtime/stdlib/LogModule.cpp
+        runtime/stdlib/CoreModule.cpp
+        runtime/stdlib/DiagnosticsModule.cpp
+        runtime/stdlib/SyncModule.cpp
         execution/Chunk.cpp
         execution/VirtualMachine.cpp
 )

@@ -96,6 +96,7 @@ struct NativeFunction
 
 	std::string name;
 	int arity = 0;
+	bool variadic = false;
 	Handler invoke;
 };
 

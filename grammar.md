@@ -119,7 +119,8 @@ primary = "(" expression ")" | "true" | "false" | "null" | "return" | integer_li
 
 identifier_expr = identifier trailer_list ;
 trailer_list = trailer trailer_list | EPSILON ;
-trailer = "." identifier | "(" arg_list_opt ")" | "[" expression "]" ;
+trailer = "." member_identifier | "(" arg_list_opt ")" | "[" expression "]" ;
+member_identifier = identifier | "print" ;
 
 arg_list_opt = arg_list | EPSILON ;
 arg_list = expression arg_list_tail ;

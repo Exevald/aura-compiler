@@ -1,7 +1,13 @@
 #include "VirtualMachine.h"
 #include "../core/values/ValueHelper.h"
-#include "../runtime/DiagnosticsModule.h"
-#include "../runtime/SyncModule.h"
+#include "../runtime/stdlib/ArrayModule.h"
+#include "../runtime/stdlib/CoreModule.h"
+#include "../runtime/stdlib/DiagnosticsModule.h"
+#include "../runtime/stdlib/IOModule.h"
+#include "../runtime/stdlib/LogModule.h"
+#include "../runtime/stdlib/MathModule.h"
+#include "../runtime/stdlib/StringModule.h"
+#include "../runtime/stdlib/SyncModule.h"
 
 #include <algorithm>
 #include <iostream>
@@ -40,6 +46,12 @@ std::optional<std::string> ReadStringConstant(
 
 VirtualMachine::VirtualMachine()
 {
+	Runtime::MathModule::Install(m_context);
+	Runtime::ArrayModule::Install(m_context);
+	Runtime::StringModule::Install(m_context);
+	Runtime::IOModule::Install(m_context);
+	Runtime::LogModule::Install(m_context);
+	Runtime::CoreModule::Install(m_context);
 	Runtime::DiagnosticsModule::Install(m_context);
 	Runtime::SyncModule::Install(m_context);
 }
@@ -656,9 +668,13 @@ int VirtualMachine::HandleCall(const uint16_t argCount)
 			return Fail(m_context, "Can only call functions");
 		}
 
-		if (argCount != native->arity)
+		if ((!native->variadic && argCount != native->arity)
+			|| (native->variadic && argCount < native->arity))
 		{
-			return Fail(m_context, "Expected " + std::to_string(native->arity) + " args");
+			const std::string expected = native->variadic
+				? ("at least " + std::to_string(native->arity))
+				: std::to_string(native->arity);
+			return Fail(m_context, "Expected " + expected + " args");
 		}
 
 		std::vector<Value> args;
