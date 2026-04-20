@@ -2,7 +2,11 @@ include(GoogleTest)
 
 add_executable(
         compiler_tests
-        Compiler_tests.cpp
+        CompilerBytecodeCoreTests.cpp
+        CompilerBytecodeFeatureTests.cpp
+        CompilerImportedTypesAndModulesTests.cpp
+        CompilerSemanticAndGenericsTests.cpp
+        CompilerStdlibAndSyncTests.cpp
         ${CMAKE_SOURCE_DIR}/src/Compiler.cpp
 )
 

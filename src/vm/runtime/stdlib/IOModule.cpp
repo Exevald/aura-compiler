@@ -1,8 +1,8 @@
 #include "IOModule.h"
 
 #include "../../core/values/ValueHelper.h"
-#include "../ExecutionContext.h"
 #include "../NativeModuleSupport.h"
+#include "../SharedRuntime.h"
 
 #include <iostream>
 
@@ -100,11 +100,11 @@ std::string FormatPrintf(ExecutionContext& ctx, const std::vector<Value>& args)
 
 } // namespace
 
-void IOModule::Install(ExecutionContext& context)
+void IOModule::Install(SharedRuntime& runtime)
 {
-	context.DefineGlobal(ModuleName(), MakeModule(ModuleName()));
+	runtime.DefineGlobal(ModuleName(), MakeModule(ModuleName()));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".print",
 		MakeNative(
 			"print",
@@ -115,7 +115,7 @@ void IOModule::Install(ExecutionContext& context)
 			},
 			true));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".println",
 		MakeNative(
 			"println",
@@ -126,7 +126,7 @@ void IOModule::Install(ExecutionContext& context)
 			},
 			true));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".printf",
 		MakeNative(
 			"printf",
@@ -141,6 +141,36 @@ void IOModule::Install(ExecutionContext& context)
 				return std::monostate{};
 			},
 			true));
+
+	runtime.DefineGlobal(
+		std::string(ModuleName()) + ".read",
+		MakeNative(
+			"read",
+			0,
+			[](ExecutionContext& ctx, const std::vector<Value>&) -> Value {
+				std::string value;
+				if (!(std::cin >> value))
+				{
+					ctx.RaiseError("std.io.read failed to read input");
+					return std::monostate{};
+				}
+				return std::make_shared<const std::string>(std::move(value));
+			}));
+
+	runtime.DefineGlobal(
+		std::string(ModuleName()) + ".readln",
+		MakeNative(
+			"readln",
+			0,
+			[](ExecutionContext& ctx, const std::vector<Value>&) -> Value {
+				std::string value;
+				if (!std::getline(std::cin, value))
+				{
+					ctx.RaiseError("std.io.readln failed to read input");
+					return std::monostate{};
+				}
+				return std::make_shared<const std::string>(std::move(value));
+			}));
 }
 
 } // namespace VM::Runtime

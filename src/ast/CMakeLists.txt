@@ -23,8 +23,16 @@ add_dependencies(aura_sync_graph aura_sync_graph_rust)
 add_library(
         ast_lib
         SymbolTable.cpp
-        ASTBuilder.cpp
-        SemanticAnalyzer.cpp
+        builder/ASTBuilderCore.cpp
+        builder/ASTBuilderDeclarations.cpp
+        builder/ASTBuilderFlatten.cpp
+        builder/ASTBuilderStatements.cpp
+        sematic/SemanticAnalyzerCallAndTypes.cpp
+        sematic/SemanticAnalyzerCoreAnalysis.cpp
+        sematic/SemanticAnalyzerDeclarations.cpp
+        sematic/SemanticAnalyzerEnvironment.cpp
+        sematic/SemanticAnalyzerExpressions.cpp
+        sematic/SemanticAnalyzerStatements.cpp
         SyncRustBridge.cpp
         SyncStaticAnalyzer.cpp
 )

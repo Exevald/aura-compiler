@@ -1,10 +1,3 @@
-cmake_minimum_required(VERSION 3.27)
-project(vm)
-
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
 include(FetchContent)
 FetchContent_Declare(
         googletest
@@ -13,28 +6,11 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-add_executable(
-        vm
-        main.cpp
-        core/values/ValueHelper.cpp
-        runtime/StringPool.cpp
-        runtime/ExecutionContext.cpp
-        runtime/stdlib/MathModule.cpp
-        runtime/stdlib/ArrayModule.cpp
-        runtime/stdlib/StringModule.cpp
-        runtime/stdlib/IOModule.cpp
-        runtime/stdlib/LogModule.cpp
-        runtime/stdlib/CoreModule.cpp
-        runtime/stdlib/DiagnosticsModule.cpp
-        runtime/stdlib/SyncModule.cpp
-        execution/Chunk.cpp
-        execution/VirtualMachine.cpp
-)
-
 add_library(
         vm_lib
         core/values/ValueHelper.cpp
         runtime/StringPool.cpp
+        runtime/SharedRuntime.cpp
         runtime/ExecutionContext.cpp
         runtime/stdlib/MathModule.cpp
         runtime/stdlib/ArrayModule.cpp
@@ -44,8 +20,11 @@ add_library(
         runtime/stdlib/CoreModule.cpp
         runtime/stdlib/DiagnosticsModule.cpp
         runtime/stdlib/SyncModule.cpp
-        execution/Chunk.cpp
-        execution/VirtualMachine.cpp
+        execution/chunk/Chunk.cpp
+        execution/VirtualMachineCallsAndActors.cpp
+        execution/VirtualMachineCore.cpp
+        execution/VirtualMachineDataOps.cpp
+        execution/VirtualMachineDebug.cpp
 )
 
 target_include_directories(vm_lib PUBLIC

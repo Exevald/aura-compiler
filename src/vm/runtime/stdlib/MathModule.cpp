@@ -1,6 +1,6 @@
 #include "MathModule.h"
-#include "../ExecutionContext.h"
 #include "../NativeModuleSupport.h"
+#include "../SharedRuntime.h"
 
 #include <cmath>
 
@@ -10,11 +10,11 @@ namespace VM::Runtime
 using Core::Value;
 using Execution::ExecutionContext;
 
-void MathModule::Install(ExecutionContext& context)
+void MathModule::Install(SharedRuntime& runtime)
 {
-	context.DefineGlobal(ModuleName(), MakeModule(ModuleName()));
+	runtime.DefineGlobal(ModuleName(), MakeModule(ModuleName()));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".max",
 		MakeNative(
 			"max",
@@ -33,7 +33,7 @@ void MathModule::Install(ExecutionContext& context)
 				}
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".min",
 		MakeNative(
 			"min",
@@ -52,7 +52,7 @@ void MathModule::Install(ExecutionContext& context)
 				}
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".abs",
 		MakeNative(
 			"abs",
@@ -71,7 +71,7 @@ void MathModule::Install(ExecutionContext& context)
 				return std::monostate{};
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".clamp",
 		MakeNative(
 			"clamp",

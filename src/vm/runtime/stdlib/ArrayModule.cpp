@@ -1,6 +1,6 @@
 #include "ArrayModule.h"
-#include "../ExecutionContext.h"
 #include "../NativeModuleSupport.h"
+#include "../SharedRuntime.h"
 
 #include <algorithm>
 
@@ -10,11 +10,11 @@ namespace VM::Runtime
 using Core::Value;
 using Execution::ExecutionContext;
 
-void ArrayModule::Install(ExecutionContext& context)
+void ArrayModule::Install(SharedRuntime& runtime)
 {
-	context.DefineGlobal(ModuleName(), MakeModule(ModuleName()));
+	runtime.DefineGlobal(ModuleName(), MakeModule(ModuleName()));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".len",
 		MakeNative(
 			"len",
@@ -31,7 +31,7 @@ void ArrayModule::Install(ExecutionContext& context)
 				return static_cast<int64_t>(array->elements.size());
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".sort",
 		MakeNative(
 			"sort",
@@ -62,7 +62,7 @@ void ArrayModule::Install(ExecutionContext& context)
 				return array;
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".push",
 		MakeNative(
 			"push",
@@ -80,7 +80,7 @@ void ArrayModule::Install(ExecutionContext& context)
 				return array;
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".pop",
 		MakeNative(
 			"pop",

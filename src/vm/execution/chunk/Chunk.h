@@ -1,10 +1,7 @@
 #pragma once
 
-#include "../core/Instruction.h"
-#include "../core/values/Value.h"
-
-#include <functional>
-#include <memory>
+#include "../../core/Instruction.h"
+#include "../../core/values/Value.h"
 
 namespace VM::Execution
 {

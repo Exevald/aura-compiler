@@ -1,7 +1,7 @@
 #include "LogModule.h"
 #include "../../core/values/ValueHelper.h"
-#include "../ExecutionContext.h"
 #include "../NativeModuleSupport.h"
+#include "../SharedRuntime.h"
 
 #include <iostream>
 
@@ -45,11 +45,11 @@ Value EmitLog(
 
 } // namespace
 
-void LogModule::Install(ExecutionContext& context)
+void LogModule::Install(SharedRuntime& runtime)
 {
-	context.DefineGlobal(ModuleName(), MakeModule(ModuleName()));
+	runtime.DefineGlobal(ModuleName(), MakeModule(ModuleName()));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".Error",
 		MakeNative(
 			"Error",
@@ -59,7 +59,7 @@ void LogModule::Install(ExecutionContext& context)
 			},
 			true));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".Warn",
 		MakeNative(
 			"Warn",
@@ -69,7 +69,7 @@ void LogModule::Install(ExecutionContext& context)
 			},
 			true));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".Info",
 		MakeNative(
 			"Info",
@@ -79,7 +79,7 @@ void LogModule::Install(ExecutionContext& context)
 			},
 			true));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".Fatal",
 		MakeNative(
 			"Fatal",

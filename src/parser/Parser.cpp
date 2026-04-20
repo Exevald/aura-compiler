@@ -1,6 +1,6 @@
 #include "Parser.h"
 
-#include "ASTBuilder.h"
+#include "../ast/builder/ASTBuilder.h"
 #include "RemapToken.h"
 
 #include <algorithm>

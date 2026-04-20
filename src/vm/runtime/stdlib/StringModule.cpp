@@ -1,7 +1,7 @@
 #include "StringModule.h"
 #include "../../core/values/ValueHelper.h"
-#include "../ExecutionContext.h"
 #include "../NativeModuleSupport.h"
+#include "../SharedRuntime.h"
 
 namespace VM::Runtime
 {
@@ -10,11 +10,11 @@ using Core::Value;
 using Core::ValueHelper;
 using Execution::ExecutionContext;
 
-void StringModule::Install(ExecutionContext& context)
+void StringModule::Install(SharedRuntime& runtime)
 {
-	context.DefineGlobal(ModuleName(), MakeModule(ModuleName()));
+	runtime.DefineGlobal(ModuleName(), MakeModule(ModuleName()));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".len",
 		MakeNative(
 			"len",
@@ -31,7 +31,7 @@ void StringModule::Install(ExecutionContext& context)
 				return static_cast<int64_t>(value->size());
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".concat",
 		MakeNative(
 			"concat",
@@ -56,7 +56,7 @@ void StringModule::Install(ExecutionContext& context)
 				return std::make_shared<const std::string>(*left + *right);
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".contains",
 		MakeNative(
 			"contains",
@@ -81,13 +81,40 @@ void StringModule::Install(ExecutionContext& context)
 				return haystack->find(*needle) != std::string::npos;
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".to_string",
 		MakeNative(
 			"to_string",
 			1,
 			[](ExecutionContext&, const std::vector<Value>& args) -> Value {
 				return std::make_shared<const std::string>(ValueHelper::ToString(args[0]));
+			}));
+
+	runtime.DefineGlobal(
+		std::string(ModuleName()) + ".to_int",
+		MakeNative(
+			"to_int",
+			1,
+			[](ExecutionContext& ctx, const std::vector<Value>& args) -> Value {
+				return ConvertToInt(ctx, args[0], "std.text");
+			}));
+
+	runtime.DefineGlobal(
+		std::string(ModuleName()) + ".to_float",
+		MakeNative(
+			"to_float",
+			1,
+			[](ExecutionContext& ctx, const std::vector<Value>& args) -> Value {
+				return ConvertToFloat(ctx, args[0], "std.text");
+			}));
+
+	runtime.DefineGlobal(
+		std::string(ModuleName()) + ".to_bool",
+		MakeNative(
+			"to_bool",
+			1,
+			[](ExecutionContext& ctx, const std::vector<Value>& args) -> Value {
+				return ConvertToBool(ctx, args[0], "std.text");
 			}));
 }
 

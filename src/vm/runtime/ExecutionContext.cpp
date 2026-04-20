@@ -1,6 +1,6 @@
 #include "ExecutionContext.h"
+#include "../core/values/ValueHelper.h"
 
-#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include <utility>
@@ -9,12 +9,38 @@ namespace VM::Execution
 {
 
 ExecutionContext::ExecutionContext()
+	: ExecutionContext(std::make_shared<Runtime::SharedRuntime>())
+{
+}
+
+ExecutionContext::ExecutionContext(std::shared_ptr<Runtime::SharedRuntime> runtime, const bool useMainThread)
+	: m_runtime(std::move(runtime))
 {
 	m_valueStack.reserve(STACK_MAX);
 	m_frames.reserve(FRAMES_MAX);
 	m_currentScope = std::make_shared<Scope>();
-	m_threads.emplace(m_mainThreadId, SyncThreadState{});
-	RecomputeSyncStats();
+	if (!m_runtime)
+	{
+		m_runtime = std::make_shared<Runtime::SharedRuntime>();
+	}
+
+	if (useMainThread)
+	{
+		m_currentThreadId = m_runtime->MainThreadId();
+	}
+	else
+	{
+		m_currentThreadId = m_runtime->CreateExecutionThread();
+		m_ownsThreadHandle = true;
+	}
+}
+
+ExecutionContext::~ExecutionContext()
+{
+	if (m_ownsThreadHandle && m_runtime)
+	{
+		m_runtime->FinishThread(m_currentThreadId);
+	}
 }
 
 void ExecutionContext::PushValue(const Core::Value& value)
@@ -28,8 +54,7 @@ void ExecutionContext::PushValue(const Core::Value& value)
 
 Core::Value ExecutionContext::PopValue()
 {
-
-	if (size_t floor = m_frames.empty() ? 0 : m_frames.back().stackBase;
+	if (const size_t floor = m_frames.empty() ? 0 : m_frames.back().stackBase;
 		m_valueStack.size() <= floor)
 	{
 		throw std::underflow_error("Value stack underflow");
@@ -38,7 +63,8 @@ Core::Value ExecutionContext::PopValue()
 	m_valueStack.pop_back();
 	return val;
 }
-Core::Value& ExecutionContext::PeekValue(size_t depth)
+
+Core::Value& ExecutionContext::PeekValue(const size_t depth)
 {
 	if (depth >= m_valueStack.size())
 	{
@@ -47,7 +73,7 @@ Core::Value& ExecutionContext::PeekValue(size_t depth)
 	return m_valueStack[m_valueStack.size() - 1 - depth];
 }
 
-const Core::Value& ExecutionContext::PeekValue(size_t depth) const
+const Core::Value& ExecutionContext::PeekValue(const size_t depth) const
 {
 	if (depth >= m_valueStack.size())
 	{
@@ -70,31 +96,23 @@ void ExecutionContext::ClearStack()
 {
 	m_valueStack.clear();
 	m_frames.clear();
+	m_activeTransactions.clear();
+	m_handlerStack.clear();
 }
 
 void ExecutionContext::DefineGlobal(const std::string& name, Core::Value val)
 {
-	m_globals[name] = std::move(val);
+	m_runtime->DefineGlobal(name, std::move(val));
 }
 
-bool ExecutionContext::GetGlobal(const std::string& name, Core::Value& outValue)
+bool ExecutionContext::GetGlobal(const std::string& name, Core::Value& outValue) const
 {
-	if (const auto it = m_globals.find(name); it != m_globals.end())
-	{
-		outValue = it->second;
-		return true;
-	}
-	return false;
+	return m_runtime->GetGlobal(name, outValue);
 }
 
-bool ExecutionContext::SetGlobal(const std::string& name, Core::Value val)
+bool ExecutionContext::SetGlobal(const std::string& name, Core::Value val) const
 {
-	if (const auto it = m_globals.find(name); it != m_globals.end())
-	{
-		it->second = std::move(val);
-		return true;
-	}
-	return false;
+	return m_runtime->SetGlobal(name, std::move(val));
 }
 
 void ExecutionContext::SetAt(const size_t index, const Core::Value& val)
@@ -189,13 +207,18 @@ bool Scope::HasVariable(const std::string& name) const
 	return false;
 }
 
-void ExecutionContext::PushFrame(Core::FunctionPtr func, Core::ClosurePtr closure, size_t base)
+void ExecutionContext::PushFrame(Core::FunctionPtr func, Core::ClosurePtr closure, const size_t base)
 {
 	if (m_frames.size() >= FRAMES_MAX)
 	{
 		throw std::runtime_error("Stack overflow (too many frames)");
 	}
-	m_frames.emplace_back(std::move(func), std::move(closure), base);
+	m_frames.emplace_back(
+		std::move(func),
+		std::move(closure),
+		base,
+		m_activeTransactions.size(),
+		m_handlerStack.size());
 }
 
 void ExecutionContext::PopFrame()
@@ -267,237 +290,116 @@ const Core::Value& ExecutionContext::GetUpvalue(const size_t index) const
 
 void* ExecutionContext::Allocate(const size_t size)
 {
-	auto block = std::make_unique<uint8_t[]>(size);
-	void* ptr = block.get();
-
-	m_memoryPool.emplace(ptr, AllocationBlock{ size, std::move(block) });
-	++m_allocationStats.activeAllocations;
-	m_allocationStats.activeBytes += size;
-	++m_allocationStats.totalAllocations;
-	m_allocationStats.totalBytes += size;
-
-	return ptr;
+	return m_runtime->Allocate(size);
 }
 
-bool ExecutionContext::Release(const void* ptr)
+bool ExecutionContext::Release(const void* ptr) const
 {
-	if (const auto it = m_memoryPool.find(ptr); it != m_memoryPool.end())
-	{
-		--m_allocationStats.activeAllocations;
-		m_allocationStats.activeBytes -= it->second.size;
-		m_memoryPool.erase(it);
-		return true;
-	}
+	return m_runtime->Release(ptr);
+}
 
-	return false;
+const ExecutionContext::AllocationStats& ExecutionContext::GetAllocationStats() const
+{
+	thread_local AllocationStats stats;
+	stats = m_runtime->GetAllocationStats();
+	return stats;
+}
+
+const ExecutionContext::SyncStats& ExecutionContext::GetSyncStats() const
+{
+	thread_local SyncStats stats;
+	stats = m_runtime->GetSyncStats();
+	return stats;
 }
 
 Core::ThreadPtr ExecutionContext::CurrentThreadHandle() const
 {
-	auto thread = std::make_shared<Core::ThreadHandle>();
-	thread->id = m_mainThreadId;
-	return thread;
+	return m_runtime->ThreadHandle(m_currentThreadId);
 }
 
-Core::ThreadPtr ExecutionContext::CreateLogicalThread()
+Core::ThreadPtr ExecutionContext::CreateLogicalThread() const
 {
-	auto thread = std::make_shared<Core::ThreadHandle>();
-	thread->id = m_nextThreadId++;
-	m_threads.emplace(thread->id, SyncThreadState{});
-	RecomputeSyncStats();
-	return thread;
+	return m_runtime->CreateLogicalThread();
 }
 
-Core::MutexPtr ExecutionContext::CreateMutex()
+Core::MutexPtr ExecutionContext::CreateMutex() const
 {
-	auto mutex = std::make_shared<Core::MutexHandle>();
-	mutex->id = m_nextMutexId++;
-	m_mutexes.emplace(mutex->id, SyncMutexState{});
-	RecomputeSyncStats();
-	return mutex;
-}
-
-bool ExecutionContext::SyncHandleExists(const size_t threadId) const
-{
-	return m_threads.contains(threadId) && m_threads.at(threadId).active;
-}
-
-bool ExecutionContext::MutexExists(const size_t mutexId) const
-{
-	return m_mutexes.contains(mutexId);
-}
-
-void ExecutionContext::ClearWaitingEdgesFrom(const size_t threadId)
-{
-	m_waitGraph.erase(threadId);
-	RecomputeSyncStats();
-}
-
-void ExecutionContext::AddWaitEdge(const size_t fromThreadId, const size_t toThreadId)
-{
-	m_waitGraph[fromThreadId].insert(toThreadId);
-	RecomputeSyncStats();
-}
-
-bool ExecutionContext::WouldIntroduceCycle(const size_t fromThreadId, const size_t toThreadId) const
-{
-	if (fromThreadId == toThreadId)
-	{
-		return true;
-	}
-
-	std::unordered_set<size_t> visited;
-	std::vector<size_t> stack{ toThreadId };
-
-	while (!stack.empty())
-	{
-		const size_t current = stack.back();
-		stack.pop_back();
-		if (!visited.insert(current).second)
-		{
-			continue;
-		}
-		if (current == fromThreadId)
-		{
-			return true;
-		}
-		if (const auto it = m_waitGraph.find(current); it != m_waitGraph.end())
-		{
-			for (const size_t next : it->second)
-			{
-				stack.push_back(next);
-			}
-		}
-	}
-
-	return false;
-}
-
-bool ExecutionContext::HasCycle() const
-{
-	for (const auto& [fromThreadId, waitingOn] : m_waitGraph)
-	{
-		for (const size_t toThreadId : waitingOn)
-		{
-			if (WouldIntroduceCycle(fromThreadId, toThreadId))
-			{
-				return true;
-			}
-		}
-	}
-	return false;
-}
-
-void ExecutionContext::RecomputeSyncStats()
-{
-	m_syncStats.threadCount = 0;
-	for (const auto& [threadId, state] : m_threads)
-	{
-		(void)threadId;
-		if (state.active)
-		{
-			++m_syncStats.threadCount;
-		}
-	}
-	m_syncStats.mutexCount = m_mutexes.size();
-	m_syncStats.waitEdgeCount = 0;
-	for (const auto& [fromThreadId, waitingOn] : m_waitGraph)
-	{
-		(void)fromThreadId;
-		m_syncStats.waitEdgeCount += waitingOn.size();
-	}
+	return m_runtime->CreateMutex();
 }
 
 bool ExecutionContext::TryLockMutex(const size_t threadId, const size_t mutexId)
 {
-	if (!SyncHandleExists(threadId))
+	if (!m_runtime->IsThreadActive(threadId))
 	{
 		RaiseError("Unknown thread handle");
 		return false;
 	}
-	if (!MutexExists(mutexId))
+	if (!m_runtime->HasMutex(mutexId))
 	{
 		RaiseError("Unknown mutex handle");
 		return false;
 	}
 
-	auto& thread = m_threads.at(threadId);
-	auto& mutex = m_mutexes.at(mutexId);
-	if (!mutex.ownerThreadId)
+	if (const auto owner = m_runtime->MutexOwner(mutexId); owner.has_value())
 	{
-		mutex.ownerThreadId = threadId;
-		thread.ownedMutexes.insert(mutexId);
-		ClearWaitingEdgesFrom(threadId);
-		return true;
+		if (*owner == threadId)
+		{
+			RaiseError("Recursive mutex lock is not allowed (self-deadlock)");
+			return false;
+		}
+		if (m_runtime->WouldDeadlockOnMutex(threadId, mutexId))
+		{
+			RaiseError("Deadlock detected while locking mutex");
+			return false;
+		}
 	}
 
-	if (*mutex.ownerThreadId == threadId)
+	if (!m_runtime->TryLockMutex(threadId, mutexId))
 	{
-		RaiseError("Potential self-deadlock: thread already owns mutex");
+		if (!m_runtime->MutexOwner(mutexId).has_value())
+		{
+			RaiseError("Mutex lock failed");
+		}
 		return false;
 	}
-
-	if (WouldIntroduceCycle(threadId, *mutex.ownerThreadId))
-	{
-		RaiseError("Deadlock detected in thread wait graph");
-		return false;
-	}
-
-	ClearWaitingEdgesFrom(threadId);
-	AddWaitEdge(threadId, *mutex.ownerThreadId);
-	return false;
+	return true;
 }
 
 bool ExecutionContext::WouldDeadlockOnMutex(const size_t threadId, const size_t mutexId) const
 {
-	if (!SyncHandleExists(threadId) || !MutexExists(mutexId))
-	{
-		return false;
-	}
-
-	const auto& mutex = m_mutexes.at(mutexId);
-	if (!mutex.ownerThreadId)
-	{
-		return false;
-	}
-	return WouldIntroduceCycle(threadId, *mutex.ownerThreadId);
+	return m_runtime->WouldDeadlockOnMutex(threadId, mutexId);
 }
 
 bool ExecutionContext::UnlockMutex(const size_t threadId, const size_t mutexId)
 {
-	if (!SyncHandleExists(threadId))
+	if (!m_runtime->IsThreadActive(threadId))
 	{
 		RaiseError("Unknown thread handle");
 		return false;
 	}
-	if (!MutexExists(mutexId))
+	if (!m_runtime->HasMutex(mutexId))
 	{
 		RaiseError("Unknown mutex handle");
 		return false;
 	}
-
-	auto& mutex = m_mutexes.at(mutexId);
-	if (!mutex.ownerThreadId)
+	if (m_runtime->MutexOwner(mutexId) != threadId)
 	{
-		RaiseError("Mutex is not locked");
+		RaiseError("Mutex unlock by non-owner is not allowed");
 		return false;
 	}
-	if (*mutex.ownerThreadId != threadId)
+	if (!m_runtime->UnlockMutex(threadId, mutexId))
 	{
-		RaiseError("Mutex unlock attempted by non-owner thread");
+		RaiseError("Mutex unlock failed");
 		return false;
 	}
-
-	mutex.ownerThreadId.reset();
-	m_threads.at(threadId).ownedMutexes.erase(mutexId);
 	return true;
 }
 
 bool ExecutionContext::AssertNoDeadlock()
 {
-	if (HasCycle())
+	if (!m_runtime->AssertNoDeadlock())
 	{
-		RaiseError("Deadlock detected in thread wait graph");
+		RaiseError("Deadlock detected");
 		return false;
 	}
 	return true;
@@ -505,67 +407,115 @@ bool ExecutionContext::AssertNoDeadlock()
 
 bool ExecutionContext::JoinThread(const size_t waitingThreadId, const size_t targetThreadId)
 {
-	if (!SyncHandleExists(waitingThreadId) || !SyncHandleExists(targetThreadId))
+	if (!m_runtime->JoinThread(waitingThreadId, targetThreadId))
 	{
-		RaiseError("Unknown thread handle");
+		RaiseError("Thread join failed");
 		return false;
 	}
-	if (waitingThreadId == targetThreadId)
-	{
-		RaiseError("Thread cannot join itself");
-		return false;
-	}
-	if (WouldIntroduceCycle(waitingThreadId, targetThreadId))
-	{
-		RaiseError("Deadlock detected in thread wait graph");
-		return false;
-	}
-
-	ClearWaitingEdgesFrom(waitingThreadId);
-	AddWaitEdge(waitingThreadId, targetThreadId);
 	return true;
 }
 
 bool ExecutionContext::FinishThread(const size_t threadId)
 {
-	if (!SyncHandleExists(threadId))
+	if (!m_runtime->FinishThread(threadId))
 	{
 		RaiseError("Unknown thread handle");
 		return false;
 	}
-	if (!m_threads.at(threadId).ownedMutexes.empty())
-	{
-		RaiseError("Cannot finish thread while it still owns mutexes");
-		return false;
-	}
-
-	m_threads.at(threadId).active = false;
-	m_waitGraph.erase(threadId);
-	for (auto& [fromThreadId, waitingOn] : m_waitGraph)
-	{
-		(void)fromThreadId;
-		waitingOn.erase(threadId);
-	}
-	RecomputeSyncStats();
 	return true;
 }
 
 bool ExecutionContext::IsMutexLocked(const size_t mutexId) const
 {
-	if (!MutexExists(mutexId))
-	{
-		return false;
-	}
-	return m_mutexes.at(mutexId).ownerThreadId.has_value();
+	return m_runtime->IsMutexLocked(mutexId);
 }
 
 std::optional<size_t> ExecutionContext::MutexOwner(const size_t mutexId) const
 {
-	if (!MutexExists(mutexId))
+	return m_runtime->MutexOwner(mutexId);
+}
+
+bool ExecutionContext::BeginTransaction(const Core::MutexPtr& mutex)
+{
+	if (!mutex)
 	{
-		return std::nullopt;
+		RaiseError("Expected a mutex handle for transaction");
+		return false;
 	}
-	return m_mutexes.at(mutexId).ownerThreadId;
+	if (!TryLockMutex(m_currentThreadId, mutex->id))
+	{
+		return false;
+	}
+	m_activeTransactions.push_back({ mutex->id });
+	return true;
+}
+
+bool ExecutionContext::EndTransaction()
+{
+	if (m_activeTransactions.empty())
+	{
+		RaiseError("Transaction stack underflow");
+		return false;
+	}
+	const auto txn = m_activeTransactions.back();
+	m_activeTransactions.pop_back();
+	return UnlockMutex(m_currentThreadId, txn.mutexId);
+}
+
+void ExecutionContext::UnwindTransactions(const size_t base)
+{
+	while (m_activeTransactions.size() > base)
+	{
+		const auto txn = m_activeTransactions.back();
+		m_activeTransactions.pop_back();
+		m_runtime->UnlockMutex(m_currentThreadId, txn.mutexId);
+	}
+}
+
+void ExecutionContext::PushHandlerMap(const Core::HandlerMapPtr& handlerMap)
+{
+	m_handlerStack.push_back(handlerMap);
+}
+
+bool ExecutionContext::PopHandlerMap()
+{
+	if (m_handlerStack.empty())
+	{
+		RaiseError("Handler stack underflow");
+		return false;
+	}
+	m_handlerStack.pop_back();
+	return true;
+}
+
+void ExecutionContext::UnwindHandlers(const size_t base)
+{
+	while (m_handlerStack.size() > base)
+	{
+		m_handlerStack.pop_back();
+	}
+}
+
+Core::Value ExecutionContext::ResolveHandledEffect(const std::string& effectName) const
+{
+	for (auto it = m_handlerStack.rbegin(); it != m_handlerStack.rend(); ++it)
+	{
+		if (*it && (*it)->handlers.contains(effectName))
+		{
+			return (*it)->handlers.at(effectName);
+		}
+	}
+	return std::monostate{};
+}
+
+void ExecutionContext::UnwindAllTransactions()
+{
+	UnwindTransactions(0);
+}
+
+void ExecutionContext::ClearHandlers()
+{
+	m_handlerStack.clear();
 }
 
 void ExecutionContext::RaiseError(const std::string& message)
@@ -583,13 +533,13 @@ void ExecutionContext::ClearError()
 
 void ExecutionContext::PrintStack() const
 {
-	std::cout << "=== Stack Trace ===\n";
-	std::cout << "Value stack size: " << m_valueStack.size() << "\n";
-	std::cout << "Call frames depth: " << m_frames.size() << "\n";
-	if (!m_errorMessage.empty())
+	std::cout << "[ ";
+	for (const auto& val : m_valueStack)
 	{
-		std::cout << "Error: " << m_errorMessage << "\n";
+		Core::ValueHelper::PrintValue(val, std::cout);
+		std::cout << " ";
 	}
+	std::cout << "]\n";
 }
 
 } // namespace VM::Execution

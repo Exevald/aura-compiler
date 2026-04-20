@@ -3,9 +3,15 @@
 #pragma once
 
 #include <concepts>
+#include <condition_variable>
+#include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -22,6 +28,9 @@ struct Module;
 struct Iterator;
 struct ThreadHandle;
 struct MutexHandle;
+struct Actor;
+struct ActorMethodMap;
+struct EffectHandlerMap;
 
 using FunctionPtr = std::shared_ptr<Function>;
 using ClosurePtr = std::shared_ptr<Closure>;
@@ -34,6 +43,9 @@ using ModulePtr = std::shared_ptr<Module>;
 using IteratorPtr = std::shared_ptr<Iterator>;
 using ThreadPtr = std::shared_ptr<ThreadHandle>;
 using MutexPtr = std::shared_ptr<MutexHandle>;
+using ActorPtr = std::shared_ptr<Actor>;
+using ActorMethodMapPtr = std::shared_ptr<ActorMethodMap>;
+using HandlerMapPtr = std::shared_ptr<EffectHandlerMap>;
 
 } // namespace VM::Core
 
@@ -41,7 +53,7 @@ namespace VM::Execution
 {
 struct Chunk;
 class ExecutionContext;
-}
+} // namespace VM::Execution
 
 namespace VM::Core
 {
@@ -64,7 +76,10 @@ using Value = std::variant<
 	ModulePtr,
 	IteratorPtr,
 	ThreadPtr,
-	MutexPtr>;
+	MutexPtr,
+	ActorPtr,
+	ActorMethodMapPtr,
+	HandlerMapPtr>;
 
 using NativeFunctionPtr = std::shared_ptr<NativeFunction>;
 
@@ -139,8 +154,80 @@ struct MutexHandle
 	size_t id = 0;
 };
 
+struct Actor
+{
+	struct MailboxItem
+	{
+		enum class Kind
+		{
+			Send,
+			Query
+		};
+
+		Kind kind = Kind::Send;
+		std::string methodName;
+		std::vector<Value> args;
+		uint64_t requestId = 0;
+	};
+
+	struct QueryResult
+	{
+		std::mutex mutex;
+		std::condition_variable cv;
+		bool ready = false;
+		Value value;
+		std::string error;
+	};
+
+	std::string typeName;
+	InstancePtr state;
+	ActorMethodMapPtr methods;
+	std::deque<MailboxItem> mailbox;
+	std::unordered_map<uint64_t, std::shared_ptr<QueryResult>> pendingQueries;
+	std::vector<std::string> failures;
+	size_t runtimeId = 0;
+	std::mutex mutex;
+	std::condition_variable cv;
+	std::thread worker;
+	std::thread::id workerThreadId;
+	bool stopping = false;
+	uint64_t nextRequestId = 1;
+
+	~Actor()
+	{
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			stopping = true;
+		}
+		cv.notify_all();
+		if (worker.joinable())
+		{
+			if (worker.get_id() == std::this_thread::get_id())
+			{
+				worker.detach();
+			}
+			else
+			{
+				worker.join();
+			}
+		}
+	}
+};
+
+struct ActorMethodMap
+{
+	std::unordered_map<std::string, Value> methods;
+};
+
+struct EffectHandlerMap
+{
+	std::unordered_map<std::string, Value> handlers;
+};
+
 template <typename T>
-concept PrimitiveValue = std::is_same_v<T, bool> || std::is_same_v<T, int64_t> || std::is_same_v<T, double>;
+concept PrimitiveValue = std::is_same_v<T, bool>
+	|| std::is_same_v<T, int64_t>
+	|| std::is_same_v<T, double>;
 
 template <typename Op, typename T>
 concept BinaryOp = requires(Op op, T a, T b) {

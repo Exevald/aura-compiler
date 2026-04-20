@@ -2,7 +2,11 @@ include(GoogleTest)
 
 add_executable(
         lexer_tests
-        Lexer_tests.cpp
+        LexerGrammarFeatureTests.cpp
+        LexerKeywordTests.cpp
+        LexerLexemeTests.cpp
+        LexerOperatorPunctuationTests.cpp
+        LexerWhitespacePositionTests.cpp
         Reader_tests.cpp
 )
 

@@ -18,6 +18,8 @@ struct StructMethodDecl
 	std::string name;
 	std::string returnType;
 	std::vector<Parameter> params;
+	std::vector<ContextBinding> contextRequirements;
+	std::vector<std::string> raisedEffects;
 	ASTNodePtr body;
 	std::vector<ASTNodePtr> metadata;
 
@@ -25,10 +27,14 @@ struct StructMethodDecl
 		std::string methodName,
 		std::string retType,
 		std::vector<Parameter> methodParams,
+		std::vector<ContextBinding> contexts,
+		std::vector<std::string> effects,
 		ASTNodePtr methodBody)
 		: name(std::move(methodName))
 		, returnType(std::move(retType))
 		, params(std::move(methodParams))
+		, contextRequirements(std::move(contexts))
+		, raisedEffects(std::move(effects))
 		, body(std::move(methodBody))
 	{
 	}

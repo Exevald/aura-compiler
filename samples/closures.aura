@@ -1,24 +1,20 @@
 module samples.closures;
 
 import samples.counter_factory as counterFactory;
+import std.io as io;
 
 var add10 = counterFactory.makeAdder(10);
 var scale3 = counterFactory.makeScaler(3);
 
-print "Closure add10(7):";
-print add10(7);
-
-print "Closure scale3(4):";
-print scale3(4);
+io.println("Closure add10(7):", add10(7));
+io.println("Closure scale3(4):", scale3(4));
 
 var numbers = [1, 2, 3, 4];
-print "Original numbers:";
-print numbers;
+io.println("Original numbers:", numbers);
 
 numbers[0] = add10(numbers[0]);
 numbers[1] = add10(numbers[1]);
 numbers[2] = scale3(numbers[2]);
 numbers[3] = scale3(numbers[3]);
 
-print "After closures:";
-print numbers;
+io.println("After closures:", numbers);

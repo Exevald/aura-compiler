@@ -16,6 +16,9 @@
 - `concat(lhs, rhs)`
 - `contains(haystack, needle)`
 - `to_string(value)`
+- `to_int(value)`
+- `to_float(value)`
+- `to_bool(value)`
 - `clamp(value, min, max)`
 
 ### `std.io`
@@ -23,6 +26,8 @@
 - `print(...values)`
 - `println(...values)`
 - `printf(format, ...values)`
+- `read()`
+- `readln()`
 
 `printf` сейчас поддерживает `%v`, `%s`, `%d`, `%f`, `%t` и `%%`.
 
@@ -46,6 +51,9 @@
 - `concat(lhs, rhs)`
 - `contains(haystack, needle)`
 - `to_string(value)`
+- `to_int(value)`
+- `to_float(value)`
+- `to_bool(value)`
 
 ### `std.log`
 
@@ -106,3 +114,22 @@ io.println(arr.len(sorted), arr.pop(sorted));
 io.printf("clamped=%d", math.clamp(math.abs(-12), 0, 10));
 log.Info(text.concat("au", "ra"));
 ```
+
+## Что ещё не доведено
+
+Отложено на отдельный этап:
+
+- `effect`
+- `handle`
+- `actor`
+- `transaction`
+- полноценная frontend-семантика `unsafe` поверх более богатой ownership/effect model
+
+## Editor Support
+
+В репозитории есть базовая подсветка Aura для редакторов:
+
+- VS Code: [editors/vscode](/Users/exevald/study/aura-compiler/editors/vscode)
+- JetBrains TextMate bundle: [editors/jetbrains-textmate](/Users/exevald/study/aura-compiler/editors/jetbrains-textmate)
+
+Подробности по установке и структуре лежат в [docs/editor-support.md](/Users/exevald/study/aura-compiler/docs/editor-support.md).

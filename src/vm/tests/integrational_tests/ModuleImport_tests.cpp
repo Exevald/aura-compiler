@@ -71,6 +71,15 @@ std::string RunProgram(const std::filesystem::path& entryFile)
 	return oss.str();
 }
 
+void CompileProgram(const std::filesystem::path& entryFile)
+{
+	const std::string emptySource;
+	const Lexer lexer(emptySource);
+	BytecodeGenerator generator;
+	const Compiler compiler(GrammarPath().string(), generator, lexer);
+	(void)compiler.CompileFileToChunk(entryFile);
+}
+
 } // namespace
 
 TEST(ModuleImportIntegrationTest, ImportedModuleExecutesThroughCompilerAndVM)
@@ -251,6 +260,33 @@ TEST(ModuleImportIntegrationTest, AddressOfCapturedVariableExecute)
 
 	const auto output = RunProgram(root / "samples" / "main.aura");
 	EXPECT_THAT(output, ::testing::HasSubstr("42"));
+	std::filesystem::remove_all(root);
+}
+
+TEST(ModuleImportIntegrationTest, RefParameterMutatesCallerStorage)
+{
+	const auto root = MakeTempRoot();
+	WriteFile(
+		root / "samples" / "main.aura",
+		"module samples.main;"
+		"struct Box { value: int; }"
+		"fn inc(target: ref<int>) : void {"
+		"  *target = *target + 1;"
+		"}"
+		"var value: int = 1;"
+		"var values = [10, 20];"
+		"var box = Box(30);"
+		"inc(value);"
+		"inc(values[0]);"
+		"inc(box.value);"
+		"print value;"
+		"print values[0];"
+		"print box.value;");
+
+	const auto output = RunProgram(root / "samples" / "main.aura");
+	EXPECT_THAT(output, ::testing::HasSubstr("2"));
+	EXPECT_THAT(output, ::testing::HasSubstr("11"));
+	EXPECT_THAT(output, ::testing::HasSubstr("31"));
 	std::filesystem::remove_all(root);
 }
 
@@ -468,7 +504,7 @@ TEST(ModuleImportIntegrationTest, BuiltinSyncModuleRejectsDeadlockAtCompileTime)
 		"print sync.would_deadlock(t2, m1);"
 		"print sync.lock(t2, m1);");
 
-	EXPECT_THROW((void)RunProgram(root / "samples" / "main.aura"), std::runtime_error);
+	EXPECT_THROW((void)CompileProgram(root / "samples" / "main.aura"), std::runtime_error);
 	std::filesystem::remove_all(root);
 }
 
@@ -485,7 +521,7 @@ TEST(ModuleImportIntegrationTest, BuiltinSyncModuleRejectsUnlockByNonOwnerAtComp
 		"print sync.lock(t1, m);"
 		"print sync.unlock(t2, m);");
 
-	EXPECT_THROW((void)RunProgram(root / "samples" / "main.aura"), std::runtime_error);
+	EXPECT_THROW((void)CompileProgram(root / "samples" / "main.aura"), std::runtime_error);
 	std::filesystem::remove_all(root);
 }
 

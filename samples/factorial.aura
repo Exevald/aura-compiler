@@ -1,5 +1,7 @@
 module samples.factorial;
 
+import std.io as io;
+
 fn factorial(n: int) : int {
     if (n == 0) {
         return 1;
@@ -7,5 +9,4 @@ fn factorial(n: int) : int {
     return n * factorial(n - 1);
 }
 
-print "factorial(5) =";
-print factorial(5);
+io.println("factorial(5) =", factorial(5));

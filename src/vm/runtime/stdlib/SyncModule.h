@@ -1,18 +1,13 @@
 #pragma once
 
-namespace VM::Execution
-{
-class ExecutionContext;
-}
-
 namespace VM::Runtime
 {
-
+class SharedRuntime;
 class SyncModule
 {
 public:
 	static constexpr const char* ModuleName() { return "std.sync"; }
-	static void Install(Execution::ExecutionContext& context);
+	static void Install(SharedRuntime& runtime);
 };
 
 } // namespace VM::Runtime

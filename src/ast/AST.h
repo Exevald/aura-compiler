@@ -27,6 +27,8 @@
 #include "nodes/statements/UnsafeNode.h"
 #include "nodes/statements/WhileStatementNode.h"
 
+#include "nodes/declarations/ActorDeclNode.h"
+#include "nodes/declarations/EffectDeclNode.h"
 #include "nodes/declarations/EnumDeclNode.h"
 #include "nodes/declarations/FunctionDeclNode.h"
 #include "nodes/declarations/InterfaceDeclNode.h"
@@ -38,3 +40,5 @@
 #include "nodes/runtime/LeafNode.h"
 #include "nodes/runtime/RawNode.h"
 #include "nodes/statements/ArrayLiteralNode.h"
+#include "nodes/statements/HandleNode.h"
+#include "nodes/statements/TransactionNode.h"

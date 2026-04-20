@@ -1,6 +1,6 @@
 #include "SyncModule.h"
-#include "../ExecutionContext.h"
 #include "../NativeModuleSupport.h"
+#include "../SharedRuntime.h"
 
 #include <utility>
 
@@ -38,14 +38,14 @@ MutexPtr RequireMutex(ExecutionContext& ctx, const Value& value)
 
 } // namespace
 
-void SyncModule::Install(ExecutionContext& context)
+void SyncModule::Install(SharedRuntime& runtime)
 {
-	const auto installPrefix = [&context](const std::string& moduleName) {
+	const auto installPrefix = [&runtime](const std::string& moduleName) {
 		auto module = std::make_shared<Module>();
 		module->name = moduleName;
-		context.DefineGlobal(module->name, module);
+		runtime.DefineGlobal(module->name, module);
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".current_thread",
 			MakeNative(
 				"current_thread",
@@ -54,7 +54,7 @@ void SyncModule::Install(ExecutionContext& context)
 					return ctx.CurrentThreadHandle();
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".spawn",
 			MakeNative(
 				"spawn",
@@ -62,7 +62,7 @@ void SyncModule::Install(ExecutionContext& context)
 					return ctx.CreateLogicalThread();
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".mutex",
 			MakeNative(
 				"mutex",
@@ -71,7 +71,7 @@ void SyncModule::Install(ExecutionContext& context)
 					return ctx.CreateMutex();
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".lock",
 			MakeNative(
 				"lock",
@@ -88,7 +88,7 @@ void SyncModule::Install(ExecutionContext& context)
 						mutex->id);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".unlock",
 			MakeNative(
 				"unlock",
@@ -105,7 +105,7 @@ void SyncModule::Install(ExecutionContext& context)
 						mutex->id);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".would_deadlock",
 			MakeNative(
 				"would_deadlock",
@@ -122,7 +122,7 @@ void SyncModule::Install(ExecutionContext& context)
 						mutex->id);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".assert_no_deadlock",
 			MakeNative(
 				"assert_no_deadlock",
@@ -131,7 +131,7 @@ void SyncModule::Install(ExecutionContext& context)
 					return ctx.AssertNoDeadlock();
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".join",
 			MakeNative(
 				"join",
@@ -148,7 +148,7 @@ void SyncModule::Install(ExecutionContext& context)
 						targetThread->id);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".finish",
 			MakeNative(
 				"finish",
@@ -162,7 +162,7 @@ void SyncModule::Install(ExecutionContext& context)
 					return ctx.FinishThread(thread->id);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".is_locked",
 			MakeNative(
 				"is_locked",
@@ -176,7 +176,7 @@ void SyncModule::Install(ExecutionContext& context)
 					return ctx.IsMutexLocked(mutex->id);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".owner_id",
 			MakeNative(
 				"owner_id",
@@ -196,7 +196,7 @@ void SyncModule::Install(ExecutionContext& context)
 					return static_cast<int64_t>(*owner);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".thread_id",
 			MakeNative(
 				"thread_id",
@@ -210,7 +210,7 @@ void SyncModule::Install(ExecutionContext& context)
 					return static_cast<int64_t>(thread->id);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".thread_count",
 			MakeNative(
 				"thread_count",
@@ -219,7 +219,7 @@ void SyncModule::Install(ExecutionContext& context)
 					return static_cast<int64_t>(ctx.GetSyncStats().threadCount);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".mutex_count",
 			MakeNative(
 				"mutex_count",
@@ -228,7 +228,7 @@ void SyncModule::Install(ExecutionContext& context)
 					return static_cast<int64_t>(ctx.GetSyncStats().mutexCount);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".wait_edge_count",
 			MakeNative(
 				"wait_edge_count",

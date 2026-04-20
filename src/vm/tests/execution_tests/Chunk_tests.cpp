@@ -1,5 +1,5 @@
 #include "../../core/values/ValueHelper.h"
-#include "Chunk.h"
+#include "../../execution/chunk/Chunk.h"
 
 #include <gtest/gtest.h>
 #include <stdexcept>

@@ -18,6 +18,12 @@ struct TypeParameterDecl
 	std::vector<std::string> constraints;
 };
 
+struct ContextBinding
+{
+	std::string name;
+	std::string typeName;
+};
+
 class FunctionDeclNode : public ASTNode
 {
 public:
@@ -25,6 +31,8 @@ public:
 	std::string returnType;
 	std::vector<TypeParameterDecl> typeParams;
 	std::vector<Parameter> params;
+	std::vector<ContextBinding> contextRequirements;
+	std::vector<std::string> raisedEffects;
 	ASTNodePtr body;
 	std::vector<ASTNodePtr> metadata;
 
@@ -33,11 +41,15 @@ public:
 		std::string ret,
 		std::vector<TypeParameterDecl> genericParams,
 		std::vector<Parameter> p,
+		std::vector<ContextBinding> contexts,
+		std::vector<std::string> effects,
 		ASTNodePtr b)
 		: name(std::move(n))
 		, returnType(std::move(ret))
 		, typeParams(std::move(genericParams))
 		, params(std::move(p))
+		, contextRequirements(std::move(contexts))
+		, raisedEffects(std::move(effects))
 		, body(std::move(b))
 	{
 	}

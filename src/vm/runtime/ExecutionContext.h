@@ -1,13 +1,12 @@
 #pragma once
 
 #include "../core/values/Value.h"
+#include "SharedRuntime.h"
 
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace VM::Execution
@@ -19,11 +18,20 @@ struct CallFrame
 	Core::ClosurePtr closure;
 	size_t ip = 0;
 	size_t stackBase = 0;
+	size_t transactionBase = 0;
+	size_t handlerBase = 0;
 
-	CallFrame(Core::FunctionPtr func, Core::ClosurePtr activeClosure, size_t base)
+	CallFrame(
+		Core::FunctionPtr func,
+		Core::ClosurePtr activeClosure,
+		size_t base,
+		size_t transactionBaseIndex = 0,
+		size_t handlerBaseIndex = 0)
 		: function(std::move(func))
 		, closure(std::move(activeClosure))
 		, stackBase(base)
+		, transactionBase(transactionBaseIndex)
+		, handlerBase(handlerBaseIndex)
 	{
 	}
 };
@@ -44,22 +52,12 @@ public:
 class ExecutionContext
 {
 public:
-	struct AllocationStats
-	{
-		size_t activeAllocations = 0;
-		size_t activeBytes = 0;
-		size_t totalAllocations = 0;
-		size_t totalBytes = 0;
-	};
-
-	struct SyncStats
-	{
-		size_t threadCount = 0;
-		size_t mutexCount = 0;
-		size_t waitEdgeCount = 0;
-	};
+	using AllocationStats = Runtime::SharedRuntime::AllocationStats;
+	using SyncStats = Runtime::SharedRuntime::SyncStats;
 
 	ExecutionContext();
+	explicit ExecutionContext(std::shared_ptr<Runtime::SharedRuntime> runtime, bool useMainThread = true);
+	~ExecutionContext();
 
 	void PushValue(const Core::Value& value);
 	Core::Value PopValue();
@@ -74,8 +72,12 @@ public:
 	const Core::Value& Peek(size_t distance = 0) const;
 
 	void DefineGlobal(const std::string& name, Core::Value val);
-	bool GetGlobal(const std::string& name, Core::Value& outValue);
-	bool SetGlobal(const std::string& name, Core::Value val);
+	bool GetGlobal(const std::string& name, Core::Value& outValue) const;
+	bool SetGlobal(const std::string& name, Core::Value val) const;
+	[[nodiscard]] Runtime::SharedRuntime& GetRuntime() { return *m_runtime; }
+	[[nodiscard]] const Runtime::SharedRuntime& GetRuntime() const { return *m_runtime; }
+	[[nodiscard]] std::shared_ptr<Runtime::SharedRuntime> GetSharedRuntime() const { return m_runtime; }
+	[[nodiscard]] size_t CurrentThreadId() const { return m_currentThreadId; }
 
 	void PushFrame(Core::FunctionPtr func, Core::ClosurePtr closure, size_t base);
 	void PopFrame();
@@ -99,13 +101,13 @@ public:
 	void ClearError();
 
 	void* Allocate(size_t size);
-	bool Release(const void* ptr);
-	[[nodiscard]] const AllocationStats& GetAllocationStats() const { return m_allocationStats; }
-	[[nodiscard]] const SyncStats& GetSyncStats() const { return m_syncStats; }
+	bool Release(const void* ptr) const;
+	[[nodiscard]] const AllocationStats& GetAllocationStats() const;
+	[[nodiscard]] const SyncStats& GetSyncStats() const;
 
 	Core::ThreadPtr CurrentThreadHandle() const;
-	Core::ThreadPtr CreateLogicalThread();
-	Core::MutexPtr CreateMutex();
+	Core::ThreadPtr CreateLogicalThread() const;
+	Core::MutexPtr CreateMutex() const;
 	bool TryLockMutex(size_t threadId, size_t mutexId);
 	bool WouldDeadlockOnMutex(size_t threadId, size_t mutexId) const;
 	bool UnlockMutex(size_t threadId, size_t mutexId);
@@ -114,49 +116,35 @@ public:
 	bool FinishThread(size_t threadId);
 	[[nodiscard]] bool IsMutexLocked(size_t mutexId) const;
 	[[nodiscard]] std::optional<size_t> MutexOwner(size_t mutexId) const;
+	bool BeginTransaction(const Core::MutexPtr& mutex);
+	bool EndTransaction();
+	void UnwindTransactions(size_t base);
+	void PushHandlerMap(const Core::HandlerMapPtr& handlerMap);
+	bool PopHandlerMap();
+	void UnwindHandlers(size_t base);
+	[[nodiscard]] Core::Value ResolveHandledEffect(const std::string& effectName) const;
+	[[nodiscard]] size_t ActiveTransactionCount() const { return m_activeTransactions.size(); }
+	[[nodiscard]] size_t ActiveHandlerCount() const { return m_handlerStack.size(); }
+	void UnwindAllTransactions();
+	void ClearHandlers();
 
 	void PrintStack() const;
 
 private:
-	struct AllocationBlock
+	struct ActiveTransaction
 	{
-		size_t size = 0;
-		std::unique_ptr<uint8_t[]> data;
+		size_t mutexId = 0;
 	};
-
-	struct SyncThreadState
-	{
-		bool active = true;
-		std::unordered_set<size_t> ownedMutexes;
-	};
-
-	struct SyncMutexState
-	{
-		std::optional<size_t> ownerThreadId;
-	};
-
-	[[nodiscard]] bool SyncHandleExists(size_t threadId) const;
-	[[nodiscard]] bool MutexExists(size_t mutexId) const;
-	void ClearWaitingEdgesFrom(size_t threadId);
-	void AddWaitEdge(size_t fromThreadId, size_t toThreadId);
-	[[nodiscard]] bool WouldIntroduceCycle(size_t fromThreadId, size_t toThreadId) const;
-	[[nodiscard]] bool HasCycle() const;
-	void RecomputeSyncStats();
 
 	std::vector<Core::Value> m_valueStack;
 	std::vector<CallFrame> m_frames;
 	std::shared_ptr<Scope> m_currentScope;
-	std::unordered_map<std::string, Core::Value> m_globals;
+	std::shared_ptr<Runtime::SharedRuntime> m_runtime;
 	std::string m_errorMessage;
-	std::unordered_map<const void*, AllocationBlock> m_memoryPool;
-	AllocationStats m_allocationStats;
-	std::unordered_map<size_t, SyncThreadState> m_threads;
-	std::unordered_map<size_t, SyncMutexState> m_mutexes;
-	std::unordered_map<size_t, std::unordered_set<size_t>> m_waitGraph;
-	SyncStats m_syncStats;
-	size_t m_nextThreadId = 1;
-	size_t m_nextMutexId = 1;
-	size_t m_mainThreadId = 0;
+	std::vector<ActiveTransaction> m_activeTransactions;
+	std::vector<Core::HandlerMapPtr> m_handlerStack;
+	size_t m_currentThreadId = 0;
+	bool m_ownsThreadHandle = false;
 
 	static constexpr size_t STACK_MAX = 4096;
 	static constexpr size_t FRAMES_MAX = 64;

@@ -5,6 +5,8 @@
 #include "ExecutionContext.h"
 
 #include <iostream>
+#include <algorithm>
+#include <cctype>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -115,6 +117,105 @@ inline Core::StringPtr RequireString(
 		return {};
 	}
 	return std::get<Core::StringPtr>(value);
+}
+
+inline Core::Value ConvertToInt(Execution::ExecutionContext& ctx, const Core::Value& value, const std::string& domain)
+{
+	if (std::holds_alternative<int64_t>(value))
+	{
+		return std::get<int64_t>(value);
+	}
+	if (std::holds_alternative<double>(value))
+	{
+		return static_cast<int64_t>(std::get<double>(value));
+	}
+	if (std::holds_alternative<bool>(value))
+	{
+		return std::get<bool>(value) ? int64_t{ 1 } : int64_t{ 0 };
+	}
+	if (std::holds_alternative<Core::StringPtr>(value) && std::get<Core::StringPtr>(value))
+	{
+		try
+		{
+			size_t parsed = 0;
+			const auto result = std::stoll(*std::get<Core::StringPtr>(value), &parsed);
+			if (parsed == std::get<Core::StringPtr>(value)->size())
+			{
+				return static_cast<int64_t>(result);
+			}
+		}
+		catch (const std::exception&)
+		{
+		}
+	}
+	ctx.RaiseError(domain + ".to_int cannot convert value to int");
+	return std::monostate{};
+}
+
+inline Core::Value ConvertToFloat(Execution::ExecutionContext& ctx, const Core::Value& value, const std::string& domain)
+{
+	if (std::holds_alternative<double>(value))
+	{
+		return std::get<double>(value);
+	}
+	if (std::holds_alternative<int64_t>(value))
+	{
+		return static_cast<double>(std::get<int64_t>(value));
+	}
+	if (std::holds_alternative<bool>(value))
+	{
+		return std::get<bool>(value) ? 1.0 : 0.0;
+	}
+	if (std::holds_alternative<Core::StringPtr>(value) && std::get<Core::StringPtr>(value))
+	{
+		try
+		{
+			size_t parsed = 0;
+			const auto result = std::stod(*std::get<Core::StringPtr>(value), &parsed);
+			if (parsed == std::get<Core::StringPtr>(value)->size())
+			{
+				return result;
+			}
+		}
+		catch (const std::exception&)
+		{
+		}
+	}
+	ctx.RaiseError(domain + ".to_float cannot convert value to float");
+	return std::monostate{};
+}
+
+inline Core::Value ConvertToBool(Execution::ExecutionContext& ctx, const Core::Value& value, const std::string& domain)
+{
+	if (std::holds_alternative<bool>(value))
+	{
+		return std::get<bool>(value);
+	}
+	if (std::holds_alternative<int64_t>(value))
+	{
+		return std::get<int64_t>(value) != 0;
+	}
+	if (std::holds_alternative<double>(value))
+	{
+		return std::get<double>(value) != 0.0;
+	}
+	if (std::holds_alternative<Core::StringPtr>(value) && std::get<Core::StringPtr>(value))
+	{
+		std::string lowered = *std::get<Core::StringPtr>(value);
+		std::ranges::transform(lowered, lowered.begin(), [](const unsigned char ch) {
+			return static_cast<char>(std::tolower(ch));
+		});
+		if (lowered == "true" || lowered == "1")
+		{
+			return true;
+		}
+		if (lowered == "false" || lowered == "0")
+		{
+			return false;
+		}
+	}
+	ctx.RaiseError(domain + ".to_bool cannot convert value to bool");
+	return std::monostate{};
 }
 
 } // namespace VM::Runtime

@@ -1,7 +1,7 @@
 #include "CoreModule.h"
 #include "../../core/values/ValueHelper.h"
-#include "../ExecutionContext.h"
 #include "../NativeModuleSupport.h"
+#include "../SharedRuntime.h"
 
 #include <algorithm>
 #include <cmath>
@@ -13,11 +13,11 @@ using Core::Value;
 using Core::ValueHelper;
 using Execution::ExecutionContext;
 
-void CoreModule::Install(ExecutionContext& context)
+void CoreModule::Install(SharedRuntime& runtime)
 {
-	context.DefineGlobal(ModuleName(), MakeModule(ModuleName()));
+	runtime.DefineGlobal(ModuleName(), MakeModule(ModuleName()));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".len",
 		MakeNative(
 			"len",
@@ -43,7 +43,7 @@ void CoreModule::Install(ExecutionContext& context)
 				return std::monostate{};
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".max",
 		MakeNative(
 			"max",
@@ -66,7 +66,7 @@ void CoreModule::Install(ExecutionContext& context)
 				}
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".min",
 		MakeNative(
 			"min",
@@ -89,7 +89,7 @@ void CoreModule::Install(ExecutionContext& context)
 				}
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".abs",
 		MakeNative(
 			"abs",
@@ -108,7 +108,7 @@ void CoreModule::Install(ExecutionContext& context)
 				return std::monostate{};
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".sort",
 		MakeNative(
 			"sort",
@@ -139,7 +139,7 @@ void CoreModule::Install(ExecutionContext& context)
 				return array;
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".push",
 		MakeNative(
 			"push",
@@ -157,7 +157,7 @@ void CoreModule::Install(ExecutionContext& context)
 				return array;
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".pop",
 		MakeNative(
 			"pop",
@@ -181,7 +181,7 @@ void CoreModule::Install(ExecutionContext& context)
 				return value;
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".concat",
 		MakeNative(
 			"concat",
@@ -206,7 +206,7 @@ void CoreModule::Install(ExecutionContext& context)
 				return std::make_shared<const std::string>(*left + *right);
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".contains",
 		MakeNative(
 			"contains",
@@ -231,7 +231,7 @@ void CoreModule::Install(ExecutionContext& context)
 				return haystack->find(*needle) != std::string::npos;
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".to_string",
 		MakeNative(
 			"to_string",
@@ -240,7 +240,34 @@ void CoreModule::Install(ExecutionContext& context)
 				return std::make_shared<const std::string>(ValueHelper::ToString(args[0]));
 			}));
 
-	context.DefineGlobal(
+	runtime.DefineGlobal(
+		std::string(ModuleName()) + ".to_int",
+		MakeNative(
+			"to_int",
+			1,
+			[](ExecutionContext& ctx, const std::vector<Value>& args) -> Value {
+				return ConvertToInt(ctx, args[0], "std.core");
+			}));
+
+	runtime.DefineGlobal(
+		std::string(ModuleName()) + ".to_float",
+		MakeNative(
+			"to_float",
+			1,
+			[](ExecutionContext& ctx, const std::vector<Value>& args) -> Value {
+				return ConvertToFloat(ctx, args[0], "std.core");
+			}));
+
+	runtime.DefineGlobal(
+		std::string(ModuleName()) + ".to_bool",
+		MakeNative(
+			"to_bool",
+			1,
+			[](ExecutionContext& ctx, const std::vector<Value>& args) -> Value {
+				return ConvertToBool(ctx, args[0], "std.core");
+			}));
+
+	runtime.DefineGlobal(
 		std::string(ModuleName()) + ".clamp",
 		MakeNative(
 			"clamp",

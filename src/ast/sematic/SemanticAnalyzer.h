@@ -1,6 +1,6 @@
 #pragma once
 
-#include "AST.h"
+#include "../AST.h"
 
 #include <memory>
 #include <optional>
@@ -25,13 +25,16 @@ private:
 		String,
 		Array,
 		Pointer,
+		Ref,
 		Function,
 		Module,
 		Interface,
 		Struct,
 		Enum,
 		EnumConstructor,
-		TypeParameter
+		TypeParameter,
+		Actor,
+		Effect
 	};
 
 	struct TypeInfo
@@ -88,6 +91,14 @@ private:
 			TypeInfo t;
 			t.kind = TypeKind::Pointer;
 			t.element = std::make_shared<TypeInfo>(std::move(pointee));
+			return t;
+		}
+
+		static TypeInfo RefTo(TypeInfo referent)
+		{
+			TypeInfo t;
+			t.kind = TypeKind::Ref;
+			t.element = std::make_shared<TypeInfo>(std::move(referent));
 			return t;
 		}
 
@@ -163,13 +174,37 @@ private:
 			return t;
 		}
 
+		static TypeInfo Actor(
+			std::string actorName,
+			std::unordered_map<std::string, TypeInfo> actorFields,
+			std::unordered_map<std::string, TypeInfo> actorMethods)
+		{
+			TypeInfo t;
+			t.kind = TypeKind::Actor;
+			t.name = std::move(actorName);
+			t.fields = std::make_shared<std::unordered_map<std::string, TypeInfo>>(std::move(actorFields));
+			t.methods = std::make_shared<std::unordered_map<std::string, TypeInfo>>(std::move(actorMethods));
+			return t;
+		}
+
+		static TypeInfo Effect(
+			std::string effectName,
+			std::unordered_map<std::string, TypeInfo> effectOps)
+		{
+			TypeInfo t;
+			t.kind = TypeKind::Effect;
+			t.name = std::move(effectName);
+			t.methods = std::make_shared<std::unordered_map<std::string, TypeInfo>>(std::move(effectOps));
+			return t;
+		}
+
 		[[nodiscard]] bool Equals(const TypeInfo& other) const
 		{
 			if (kind != other.kind)
 			{
 				return false;
 			}
-			if (kind == TypeKind::Array || kind == TypeKind::Pointer)
+			if (kind == TypeKind::Array || kind == TypeKind::Pointer || kind == TypeKind::Ref)
 			{
 				if (!element || !other.element)
 				{
@@ -214,7 +249,12 @@ private:
 				}
 				return ret->Equals(*other.ret);
 			}
-			if (kind == TypeKind::Struct || kind == TypeKind::Module || kind == TypeKind::Enum || kind == TypeKind::Interface)
+			if (kind == TypeKind::Struct
+				|| kind == TypeKind::Module
+				|| kind == TypeKind::Enum
+				|| kind == TypeKind::Interface
+				|| kind == TypeKind::Actor
+				|| kind == TypeKind::Effect)
 			{
 				return name == other.name;
 			}
@@ -277,6 +317,9 @@ private:
 		std::unordered_map<std::string, TypeInfo> enums;
 		std::unordered_map<std::string, TypeInfo> enumConstructors;
 		std::unordered_map<std::string, TypeInfo> interfaces;
+		std::unordered_map<std::string, TypeInfo> actors;
+		std::unordered_map<std::string, TypeInfo> effects;
+		std::unordered_map<std::string, std::string> effectOperations;
 		std::unordered_map<std::string, std::string> aliases;
 		std::unordered_map<std::string, GenericAliasInfo> genericAliases;
 
@@ -286,6 +329,9 @@ private:
 			enums.clear();
 			enumConstructors.clear();
 			interfaces.clear();
+			actors.clear();
+			effects.clear();
+			effectOperations.clear();
 			aliases.clear();
 			genericAliases.clear();
 		}
@@ -344,12 +390,20 @@ private:
 
 	void AnalyzeTypeForBinaryOp(const std::string& op, const TypeInfo& lhs, const TypeInfo& rhs);
 	void AnalyzeAssignment(ASTNode* valueExpr, const std::string& name, ASTNode* indexExpr, bool hasIndex);
+	void ValidateRefArgument(const TypeInfo& expectedRef, ASTNode* arg, size_t argIndex);
+	[[nodiscard]] TypeInfo AddressableValueType(ASTNode* node);
+	[[nodiscard]] bool IsConstAddressable(ASTNode* node) const;
 	[[nodiscard]] bool IsAssignable(const TypeInfo& expected, const TypeInfo& actual) const;
 	[[nodiscard]] static bool IsFunctionLikeInterface(const TypeInfo& interfaceType);
 	[[nodiscard]] std::optional<TypeInfo> ResolveModuleMemberType(const std::string& moduleName, const std::string& member) const;
 	[[nodiscard]] TypeInfo InferFunctionBodyReturnType(ASTNode* body);
 	[[nodiscard]] bool IsModuleMemberExported(const std::string& moduleName, const std::string& member) const;
 	[[nodiscard]] bool ModuleDefinesMember(const std::string& moduleName, const std::string& member) const;
+	[[nodiscard]] bool CurrentContextAllowsEffect(const std::string& effectName) const;
+	[[nodiscard]] bool HasActiveTransaction(const std::string& regionName) const;
+	[[nodiscard]] bool IsCurrentActorState(const std::string& name) const;
+	[[nodiscard]] static bool IsSendable(const TypeInfo& type);
+	void ValidateSendable(const TypeInfo& type, const std::string& what) const;
 
 	[[nodiscard]] TypeInfo StringToType(const std::string& name) const;
 	[[nodiscard]] std::string QualifyName(const std::string& name) const;
@@ -370,6 +424,12 @@ private:
 	ModuleRegistry m_modules;
 	std::string m_currentModule;
 	std::vector<std::unordered_map<std::string, TypeInfo>> m_typeParamScopes;
+	std::vector<std::unordered_set<std::string>> m_activeHandledEffects;
+	std::vector<std::unordered_set<std::string>> m_activeRaisedEffects;
+	std::vector<std::unordered_set<std::string>> m_actorStateScopes;
+	std::vector<std::unordered_set<std::string>> m_activeTransactions;
+	std::unordered_set<std::string> m_sharedVariables;
+	int m_actorQueryDepth = 0;
 	int m_unsafeDepth = 0;
 
 	TypeInfo VisitAndGet(ASTNode* node);
@@ -386,6 +446,8 @@ private:
 	void Visit(StructDeclNode& node) override;
 	void Visit(EnumDeclNode& node) override;
 	void Visit(InterfaceDeclNode& node) override;
+	void Visit(EffectDeclNode& node) override;
+	void Visit(ActorDeclNode& node) override;
 	void Visit(BlockNode& node) override;
 	void Visit(ExportDeclNode& node) override;
 	void Visit(IfStatementNode& node) override;
@@ -402,6 +464,8 @@ private:
 	void Visit(ArrayLiteralNode& node) override;
 	void Visit(IndexNode& node) override;
 	void Visit(IterNode& node) override;
+	void Visit(TransactionNode& node) override;
+	void Visit(HandleNode& node) override;
 	void Visit(LeafNode& node) override;
 	void Visit(RawNode& node) override;
 	void Visit(ComptimeNode& node) override;

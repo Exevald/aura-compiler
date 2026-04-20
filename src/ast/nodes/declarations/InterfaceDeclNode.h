@@ -12,6 +12,7 @@ struct InterfaceMethodSig
 	std::string name;
 	std::string returnType;
 	std::vector<Parameter> params;
+	std::vector<std::string> raisedEffects;
 };
 
 class InterfaceDeclNode : public ASTNode

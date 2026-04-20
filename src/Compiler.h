@@ -2,7 +2,7 @@
 
 #include "bytecode/BytecodeGenerator.h"
 #include "lexer/Lexer.h"
-#include "vm/execution/Chunk.h"
+#include "vm/execution/chunk/Chunk.h"
 
 #include <filesystem>
 #include <string>

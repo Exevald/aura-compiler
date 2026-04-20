@@ -1,7 +1,7 @@
 #include "DiagnosticsModule.h"
 #include "../../core/values/ValueHelper.h"
-#include "../ExecutionContext.h"
 #include "../NativeModuleSupport.h"
+#include "../SharedRuntime.h"
 
 #include <cstdint>
 #include <stdexcept>
@@ -318,14 +318,14 @@ int64_t EstimateDeepSize(const Value& value, std::unordered_set<const void*>& vi
 
 } // namespace
 
-void DiagnosticsModule::Install(ExecutionContext& context)
+void DiagnosticsModule::Install(SharedRuntime& runtime)
 {
-	const auto installPrefix = [&context](const std::string& moduleName) {
+	const auto installPrefix = [&runtime](const std::string& moduleName) {
 		auto module = std::make_shared<VM::Core::Module>();
 		module->name = moduleName;
-		context.DefineGlobal(module->name, module);
+		runtime.DefineGlobal(module->name, module);
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".active_allocations",
 			MakeNative(
 				"active_allocations",
@@ -334,7 +334,7 @@ void DiagnosticsModule::Install(ExecutionContext& context)
 					return static_cast<int64_t>(ctx.GetAllocationStats().activeAllocations);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".active_bytes",
 			MakeNative(
 				"active_bytes",
@@ -343,7 +343,7 @@ void DiagnosticsModule::Install(ExecutionContext& context)
 					return static_cast<int64_t>(ctx.GetAllocationStats().activeBytes);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".total_allocations",
 			MakeNative(
 				"total_allocations",
@@ -352,7 +352,7 @@ void DiagnosticsModule::Install(ExecutionContext& context)
 					return static_cast<int64_t>(ctx.GetAllocationStats().totalAllocations);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".total_bytes",
 			MakeNative(
 				"total_bytes",
@@ -361,7 +361,7 @@ void DiagnosticsModule::Install(ExecutionContext& context)
 					return static_cast<int64_t>(ctx.GetAllocationStats().totalBytes);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".deep_size",
 			MakeNative(
 				"deep_size",
@@ -371,7 +371,7 @@ void DiagnosticsModule::Install(ExecutionContext& context)
 					return EstimateDeepSize(args[0], visited);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".is_send",
 			MakeNative(
 				"is_send",
@@ -381,7 +381,7 @@ void DiagnosticsModule::Install(ExecutionContext& context)
 					return IsSendValue(args[0], visited);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".is_sync",
 			MakeNative(
 				"is_sync",
@@ -391,7 +391,7 @@ void DiagnosticsModule::Install(ExecutionContext& context)
 					return IsSyncValue(args[0], visited);
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".assert_send",
 			MakeNative(
 				"assert_send",
@@ -406,7 +406,7 @@ void DiagnosticsModule::Install(ExecutionContext& context)
 					return true;
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".assert_sync",
 			MakeNative(
 				"assert_sync",
@@ -421,7 +421,7 @@ void DiagnosticsModule::Install(ExecutionContext& context)
 					return true;
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".assert_no_leaks",
 			MakeNative(
 				"assert_no_leaks",
@@ -438,7 +438,7 @@ void DiagnosticsModule::Install(ExecutionContext& context)
 					return true;
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".alloc",
 			MakeNative(
 				"alloc",
@@ -483,7 +483,7 @@ void DiagnosticsModule::Install(ExecutionContext& context)
 					return ptr;
 				}));
 
-		context.DefineGlobal(
+		runtime.DefineGlobal(
 			moduleName + ".free",
 			MakeNative(
 				"free",

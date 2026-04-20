@@ -1,5 +1,6 @@
 #include "../../core/values/ValueHelper.h"
 #include "../../runtime/ExecutionContext.h"
+#include "../../runtime/SharedRuntime.h"
 
 #include <gtest/gtest.h>
 #include <stdexcept>
@@ -253,4 +254,18 @@ TEST(ExecutionContextTest, MultipleFramesManagement)
 
 	ctx.PopFrame();
 	EXPECT_FALSE(ctx.HasFrames());
+}
+
+TEST(ExecutionContextTest, SharedRuntimeGlobalsVisibleAcrossContexts)
+{
+	auto runtime = std::make_shared<VM::Runtime::SharedRuntime>();
+	ExecutionContext writer(runtime);
+	ExecutionContext reader(runtime, false);
+
+	writer.DefineGlobal("shared_counter", 42.0);
+
+	Value value;
+	ASSERT_TRUE(reader.GetGlobal("shared_counter", value));
+	EXPECT_DOUBLE_EQ(ValueHelper::As<double>(value), 42.0);
+	EXPECT_NE(writer.CurrentThreadId(), reader.CurrentThreadId());
 }

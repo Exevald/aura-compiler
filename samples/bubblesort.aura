@@ -1,12 +1,11 @@
 module samples.bubblesort;
 
-import samples.sorting as sorting;
+import samples.sorting;
+import std.io as io;
+import std.array;
 
 var list = [5, 2, 9, 1, 5, 6];
-print "Original list:";
-print list;
+io.println("Original list:", list);
 
 var sorted = sorting.bubbleSort(list, 6);
-
-print "Sorted array:";
-print sorted;
+io.println("Sorted array:", sorted);

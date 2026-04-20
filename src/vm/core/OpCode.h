@@ -63,6 +63,9 @@ enum class OpCode : uint8_t
 	OP_BUILD_ENUM = 0x56,
 	OP_GET_ENUM_TAG = 0x57,
 	OP_GET_ENUM_ARG = 0x58,
+	OP_BUILD_ACTOR = 0x59,
+	OP_ACTOR_SEND = 0x5A,
+	OP_ACTOR_QUERY = 0x5B,
 
 	OP_ADDR_LOCAL = 0x60,
 	OP_ADDR_GLOBAL = 0x61,
@@ -81,6 +84,13 @@ enum class OpCode : uint8_t
 	OP_ITER_TRANSFORM = 0x76,
 
 	OP_PRINT = 0x80,
+	OP_BUILD_HANDLER = 0x81,
+	OP_PUSH_HANDLER = 0x82,
+	OP_POP_HANDLER = 0x83,
+	OP_EFFECT_INVOKE = 0x84,
+	OP_BEGIN_TXN = 0x85,
+	OP_END_TXN = 0x86,
+	OP_BUILD_ACTOR_METHODS = 0x87,
 
 	OP_RETURN = 0xFF,
 };
@@ -180,10 +190,16 @@ constexpr bool OpCodeHasOperand(const OpCode opcode)
 	case OP_MEMBER_SET:
 	case OP_BUILD_ENUM:
 	case OP_GET_ENUM_ARG:
+	case OP_BUILD_ACTOR:
+	case OP_ACTOR_SEND:
+	case OP_ACTOR_QUERY:
 	case OP_ADDR_LOCAL:
 	case OP_ADDR_GLOBAL:
 	case OP_ADDR_UPVALUE:
 	case OP_ITER_NEXT:
+	case OP_BUILD_HANDLER:
+	case OP_EFFECT_INVOKE:
+	case OP_BUILD_ACTOR_METHODS:
 		return true;
 	default:
 		return false;
@@ -218,10 +234,14 @@ constexpr OperandSize GetOperandSize(const OpCode opcode)
 	case OP_MEMBER_SET:
 	case OP_BUILD_ENUM:
 	case OP_GET_ENUM_ARG:
+	case OP_BUILD_ACTOR:
+	case OP_ACTOR_SEND:
+	case OP_ACTOR_QUERY:
 	case OP_ADDR_LOCAL:
 	case OP_ADDR_GLOBAL:
 	case OP_ADDR_UPVALUE:
 	case OP_ITER_NEXT:
+	case OP_BUILD_ACTOR_METHODS:
 		return OperandSize::Uint8;
 
 	default:

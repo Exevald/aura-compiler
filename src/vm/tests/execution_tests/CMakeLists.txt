@@ -4,7 +4,14 @@ add_executable(
         execution_tests
         Chunk_tests.cpp
         ExecutionContext_tests.cpp
+        SharedRuntime_tests.cpp
         VirtualMachine_tests.cpp
+        detail/VirtualMachineActorTests.cpp
+        detail/VirtualMachineArithmeticControlTests.cpp
+        detail/VirtualMachineCoreExecutionTests.cpp
+        detail/VirtualMachineDiagnosticsModuleTests.cpp
+        detail/VirtualMachineStdlibTests.cpp
+        detail/VirtualMachineSyncModuleTests.cpp
         Function_tests.cpp
 )
 
