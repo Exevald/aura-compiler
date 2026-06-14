@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: microservicetemplate-migrate
+  namespace: aura-microservicetemplate
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: microservicetemplate-migrate
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: your-registry/microservicetemplate:latest
+          imagePullPolicy: IfNotPresent
+          workingDir: /app/microservicetemplate
+          command:
+            - /app/aura-compiler
+            - run
+            - /app/microservicetemplate/cmd/migrate.aura
+          envFrom:
+            - configMapRef:
+                name: microservicetemplate-app-config
+            - secretRef:
+                name: microservicetemplate-app-secret

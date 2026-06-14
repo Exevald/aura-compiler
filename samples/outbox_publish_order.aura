@@ -1,0 +1,18 @@
+module samples.outbox_publish_order;
+
+import std.db.mysql as db;
+import std.json as json;
+import std.outbox as outbox;
+
+fn create_order(conn) : int {
+    db.exec_stmt(conn, "insert into orders(id, status) values(?, ?)", [1, "created"]);
+    return outbox.enqueue_json(conn, "jobs", "jobs", json.object([
+        json.field("kind", json.encode_string("order.created")),
+        json.field("order_id", json.encode_number(1))
+    ]));
+};
+
+var conn = db.open("host=127.0.0.1;port=3306;user=aura;password=aura_pass;database=aura_test");
+outbox.ensure_schema(conn);
+print outbox.with_tx(conn, create_order);
+db.close(conn);

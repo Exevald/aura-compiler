@@ -1,0 +1,99 @@
+module std.http.raw;
+
+import std.http.raw_native as native;
+import std.array as array;
+import std.core as core;
+import std.text as txt;
+
+fn reason_phrase(status: int) : string {
+    if (status == 200) {
+        return "OK";
+    }
+    if (status == 201) {
+        return "Created";
+    }
+    if (status == 202) {
+        return "Accepted";
+    }
+    if (status == 204) {
+        return "No Content";
+    }
+    if (status == 302) {
+        return "Found";
+    }
+    if (status == 400) {
+        return "Bad Request";
+    }
+    if (status == 404) {
+        return "Not Found";
+    }
+    if (status == 409) {
+        return "Conflict";
+    }
+    if (status == 422) {
+        return "Unprocessable Entity";
+    }
+    if (status == 500) {
+        return "Internal Server Error";
+    }
+    return "OK";
+};
+
+fn append_header_lines(headers: [string]) : string {
+    var out: string = "";
+    var i: int = 0;
+    while (i < array.len(headers)) {
+        out = txt.concat(out, headers[i]);
+        out = txt.concat(out, "\r\n");
+        i = i + 1;
+    }
+    return out;
+};
+
+export fn parse_request(request: string) : [string] {
+    return native.parse_request(request);
+};
+
+export fn read_request(connection) : [string] {
+    return native.read_request(connection);
+};
+
+export fn try_read_request(connection) : [string] {
+    return native.try_read_request(connection);
+};
+
+export fn response_with_headers(status: int, content_type: string, body_value: string, headers: [string]) : string {
+    var head = txt.concat("HTTP/1.1 ", core.to_string(status));
+    head = txt.concat(head, " ");
+    head = txt.concat(head, reason_phrase(status));
+    head = txt.concat(head, "\r\n");
+    head = txt.concat(head, "Content-Type: ");
+    head = txt.concat(head, content_type);
+    head = txt.concat(head, "\r\n");
+    head = txt.concat(head, append_header_lines(headers));
+    head = txt.concat(head, "Content-Length: ");
+    head = txt.concat(head, core.to_string(txt.len(body_value)));
+    head = txt.concat(head, "\r\n");
+    head = txt.concat(head, "Connection: close\r\n\r\n");
+    return txt.concat(head, body_value);
+};
+
+export fn response(status: int, content_type: string, body_value: string) : string {
+    return response_with_headers(status, content_type, body_value, []);
+};
+
+export fn text(status: int, body_value: string) : string {
+    return response(status, "text/plain; charset=utf-8", body_value);
+};
+
+export fn json(status: int, body_json: string) : string {
+    return response(status, "application/json", body_json);
+};
+
+export fn ok_json(body_json: string) : string {
+    return json(200, body_json);
+};
+
+export fn redirect(location: string) : string {
+    return response_with_headers(302, "text/plain; charset=utf-8", "", [txt.concat("Location: ", location)]);
+};

@@ -1,12 +1,7 @@
 #include "../core/values/ValueHelper.h"
-#include "../runtime/stdlib/ArrayModule.h"
-#include "../runtime/stdlib/CoreModule.h"
-#include "../runtime/stdlib/DiagnosticsModule.h"
-#include "../runtime/stdlib/IOModule.h"
-#include "../runtime/stdlib/LogModule.h"
-#include "../runtime/stdlib/MathModule.h"
-#include "../runtime/stdlib/StringModule.h"
-#include "../runtime/stdlib/SyncModule.h"
+#include "../runtime/stdlib/BuiltinModuleInstaller.h"
+#include "../runtime/stdlib/core/CoreModule.h"
+#include "../runtime/stdlib/memory/MemoryModule.h"
 #include "VirtualMachine.h"
 #include "common/VirtualMachineRuntimeSupport.h"
 
@@ -28,10 +23,16 @@ VirtualMachine::VirtualMachine()
 {
 }
 
-VirtualMachine::VirtualMachine(std::shared_ptr<Runtime::SharedRuntime> runtime, const bool installStdlib)
+VirtualMachine::VirtualMachine(
+	std::shared_ptr<Runtime::SharedRuntime> runtime,
+	const bool installStdlib)
 	: m_runtime(std::move(runtime))
 	, m_context(m_runtime, installStdlib)
 {
+	m_context.SetCallableInvoker(
+		[this](const Value& callee, const std::vector<Value>& args, Value& result) {
+			return InvokeCallable(callee, args, result);
+		});
 	if (installStdlib)
 	{
 		InstallStdlib();
@@ -40,14 +41,7 @@ VirtualMachine::VirtualMachine(std::shared_ptr<Runtime::SharedRuntime> runtime, 
 
 void VirtualMachine::InstallStdlib() const
 {
-	Runtime::MathModule::Install(*m_runtime);
-	Runtime::ArrayModule::Install(*m_runtime);
-	Runtime::StringModule::Install(*m_runtime);
-	Runtime::IOModule::Install(*m_runtime);
-	Runtime::LogModule::Install(*m_runtime);
-	Runtime::CoreModule::Install(*m_runtime);
-	Runtime::DiagnosticsModule::Install(*m_runtime);
-	Runtime::SyncModule::Install(*m_runtime);
+	Runtime::InstallBuiltinStdlib(*m_runtime);
 }
 
 bool VirtualMachine::Interpret(const Chunk* chunk)
@@ -347,6 +341,18 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		return 0;
 	}
 
+	case OP_DUP:
+		m_context.PushValue(m_context.PeekValue(0));
+		return 0;
+
+	case OP_SWAP: {
+		Value top = m_context.PopValue();
+		Value next = m_context.PopValue();
+		m_context.PushValue(top);
+		m_context.PushValue(next);
+		return 0;
+	}
+
 	case OP_MOD: {
 		Value b = m_context.PopValue();
 		Value a = m_context.PopValue();
@@ -363,6 +369,10 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 
 	case OP_BUILD_ARRAY: {
 		return DataExecutor{ *this }.BuildArray(static_cast<uint8_t>(instr.operand));
+	}
+
+	case OP_BUILD_MAP: {
+		return DataExecutor{ *this }.BuildMap(static_cast<uint8_t>(instr.operand));
 	}
 
 	case OP_INDEX_GET:
@@ -421,11 +431,30 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 
 	case OP_BEGIN_TXN: {
 		const Value mutexValue = m_context.PopValue();
-		if (!std::holds_alternative<Core::MutexPtr>(mutexValue))
+		if (std::holds_alternative<Core::MutexPtr>(mutexValue))
 		{
-			return Fail(m_context, "Transaction requires a mutex handle");
+			return m_context.BeginTransaction(std::get<Core::MutexPtr>(mutexValue)) ? 0 : RuntimeError;
 		}
-		return m_context.BeginTransaction(std::get<Core::MutexPtr>(mutexValue)) ? 0 : RuntimeError;
+		if (std::holds_alternative<Core::ArrayPtr>(mutexValue))
+		{
+			const auto mutexArray = std::get<Core::ArrayPtr>(mutexValue);
+			if (!mutexArray)
+			{
+				return Fail(m_context, "Transaction requires mutex handles");
+			}
+			std::vector<Core::MutexPtr> mutexes;
+			mutexes.reserve(mutexArray->elements.size());
+			for (const auto& element : mutexArray->elements)
+			{
+				if (!std::holds_alternative<Core::MutexPtr>(element))
+				{
+					return Fail(m_context, "Transaction requires mutex handles");
+				}
+				mutexes.push_back(std::get<Core::MutexPtr>(element));
+			}
+			return m_context.BeginTransaction(mutexes) ? 0 : RuntimeError;
+		}
+		return Fail(m_context, "Transaction requires a mutex handle or mutex array");
 	}
 
 	case OP_END_TXN:
@@ -440,10 +469,20 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 			auto arr = std::get<Core::ArrayPtr>(iterable);
 			auto index = std::make_shared<size_t>(0);
 
-			it->next = [arr, index]() -> std::pair<bool, Value> {
-				if (*index < arr->elements.size())
+			it->next = [this, arr, index]() -> std::pair<bool, Value> {
+				size_t size = 0;
+				if (!m_context.GetArraySize(arr, size))
 				{
-					return { true, arr->elements[(*index)++] };
+					return { false, std::monostate{} };
+				}
+				if (*index < size)
+				{
+					Value value;
+					if (!m_context.GetArrayElement(arr, (*index)++, value))
+					{
+						return { false, std::monostate{} };
+					}
+					return { true, value };
 				}
 				return { false, std::monostate{} };
 			};
@@ -681,6 +720,19 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		return 0;
 	}
 
+	case OP_ASSERT: {
+		const auto message = ReadStringConstant(constants, instr.operand, m_context);
+		if (!message)
+		{
+			return RuntimeError;
+		}
+		if (!Core::ValueHelper::As<bool>(m_context.PopValue()))
+		{
+			return Fail(m_context, *message);
+		}
+		return 0;
+	}
+
 	case OP_PUSH_HANDLER: {
 		const Value handlerValue = m_context.PopValue();
 		if (!std::holds_alternative<Core::HandlerMapPtr>(handlerValue))
@@ -759,7 +811,8 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	}
 
 	default:
-		m_context.RaiseError("Unknown opcode: " + std::to_string(static_cast<uint8_t>(instr.opcode)));
+		m_context.RaiseError("Unknown opcode: "
+			+ std::to_string(static_cast<uint8_t>(instr.opcode)));
 		return -1;
 	}
 }

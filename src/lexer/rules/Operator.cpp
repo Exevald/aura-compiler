@@ -7,6 +7,16 @@ Token operatorRule::ParseOperator(Reader& reader, size_t pos, size_t line)
 	if (!reader.EndOfFile())
 	{
 		const char next = reader.Peek();
+		if (ch == '.' && next == '.')
+		{
+			reader.Get();
+			if (!reader.EndOfFile() && reader.Peek() == '.')
+			{
+				reader.Get();
+				return { TokenType::ELLIPSIS, "...", pos, line, Error::NONE };
+			}
+			return { TokenType::ERROR, "..", pos, line, Error::UNEXPECTED_CHARACTER };
+		}
 
 		if (ch == '=' && next == '=')
 		{

@@ -1,0 +1,27 @@
+module std.map;
+
+import std.map_native as native;
+
+export fn new<K, V>() : map[K]V {
+    return map[K]V{};
+};
+
+export fn len<K, V>(values: map[K]V) : int {
+    return native.len(values);
+};
+
+export fn has<K, V>(values: map[K]V, key: K) : bool {
+    return native.has(values, key);
+};
+
+export fn delete<K, V>(values: map[K]V, key: K) : bool {
+    return native.delete(values, key);
+};
+
+export fn keys<K, V>(values: map[K]V) : [K] {
+    return native.keys(values);
+};
+
+export fn values<K, V>(values: map[K]V) : [V] {
+    return native.values(values);
+};

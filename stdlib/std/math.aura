@@ -1,0 +1,19 @@
+module std.math;
+
+import std.core as core;
+
+export fn max<T>(left: T, right: T) : T {
+    return core.max(left, right);
+};
+
+export fn min<T>(left: T, right: T) : T {
+    return core.min(left, right);
+};
+
+export fn abs<T>(value: T) : T {
+    return core.abs(value);
+};
+
+export fn clamp<T>(value: T, low: T, high: T) : T {
+    return core.clamp(value, low, high);
+};

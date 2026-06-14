@@ -1,0 +1,23 @@
+module samples.functions;
+
+import std.io as io;
+
+fn add(left: int, right: int) : int {
+    return left + right;
+}
+
+fn increment(value: ref<int>) : void {
+    *value = *value + 1;
+}
+
+fn join_name(prefix: string, name: string) : string {
+    return prefix + " " + name;
+}
+
+var total: int = add(20, 22);
+var counter: int = 5;
+increment(counter);
+
+io.println("total =", total);
+io.println("counter after increment =", counter);
+io.println(join_name("Hello", "Aura"));

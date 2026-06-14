@@ -1,0 +1,46 @@
+module std.http.middleware;
+
+import std.array as array;
+import std.http.server as server;
+import std.log as log;
+import std.text as text;
+
+fn insert_header(response: string, name: string, value: string) : string {
+    var split_at = text.index_of(response, "\r\n\r\n");
+    if (split_at < 0) {
+        return response;
+    }
+
+    var head = text.slice(response, 0, split_at);
+    var tail = text.slice(response, split_at, text.len(response));
+    return text.concat(
+        text.concat(
+            text.concat(
+                text.concat(
+                    text.concat(head, "\r\n"),
+                    name),
+                ": "),
+            value),
+        tail);
+};
+
+export fn chain(route_fn, middlewares) {
+    var composed = route_fn;
+    var index = array.len(middlewares) - 1;
+    while (index >= 0) {
+        var next_fn = composed;
+        var current = middlewares[index];
+        composed = fn(request: [string]) -> current(next_fn, request);
+        index = index - 1;
+    }
+    return composed;
+};
+
+export fn request_logger(next_fn, request: [string]) : string {
+    log.Info("http", server.method(request), server.path(request));
+    return next_fn(request);
+};
+
+export fn with_response_header(name: string, value: string) {
+    return fn(next_fn, request: [string]) -> insert_header(next_fn(request), name, value);
+};

@@ -1,0 +1,12 @@
+import "../../bin/stl/modules/sql.stasm"
+
+schema ChatQueryRepo
+{
+    state Ready() {
+        func fetchHistory(Database<Connected> db) -> Fetched
+    }
+
+    state Fetched(Database<Connected> db, string jsonResult) {
+        func reset() -> Ready
+    }
+}

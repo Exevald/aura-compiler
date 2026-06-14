@@ -17,8 +17,9 @@ import_as_opt = "as" identifier | EPSILON ;
 export_decl = "export" exportable ";" ;
 exportable = declaration_no_semi | effect_def_no_semi | actor_decl_no_semi | identifier ;
 
-qualified_id = identifier qualified_id_tail ;
-qualified_id_tail = "." identifier qualified_id_tail | EPSILON ;
+qualified_id = qualified_segment qualified_id_tail ;
+qualified_id_tail = "." qualified_segment qualified_id_tail | EPSILON ;
+qualified_segment = identifier | "context" | "map" ;
 
 declaration = var_decl
             | const_decl
@@ -41,8 +42,9 @@ assign_expr_opt = "=" expression | EPSILON ;
 const_decl = const_decl_no_semi ";" ;
 const_decl_no_semi = "const" identifier type_guide_opt "=" expression ;
 
-func_decl = "fn" identifier type_params_opt "(" param_list_opt ")" type_guide_opt context_req_opt effect_spec_opt contract_list block_stmt
-          | "comptime" "fn" identifier type_params_opt "(" param_list_opt ")" type_guide_opt context_req_opt effect_spec_opt contract_list block_stmt ;
+func_decl = "fn" function_name type_params_opt "(" param_list_opt ")" type_guide_opt context_req_opt effect_spec_opt contract_list block_stmt
+          | "comptime" "fn" function_name type_params_opt "(" param_list_opt ")" type_guide_opt context_req_opt effect_spec_opt contract_list block_stmt ;
+function_name = identifier | "print" ;
 
 type_alias = type_alias_no_semi ";" ;
 type_alias_no_semi = "type" identifier type_params_opt "=" dataType ;
@@ -50,11 +52,11 @@ type_alias_no_semi = "type" identifier type_params_opt "=" dataType ;
 struct_decl = struct_decl_no_semi ;
 struct_decl_no_semi = "struct" identifier type_params_opt implements_opt "{" struct_member_list "}" contract_list ;
 implements_opt = "implements" interface_type_list | EPSILON ;
-interface_type_list = qualified_id interface_type_list_tail ;
-interface_type_list_tail = "," qualified_id interface_type_list_tail | EPSILON ;
+interface_type_list = dataType interface_type_list_tail ;
+interface_type_list_tail = "," dataType interface_type_list_tail | EPSILON ;
 struct_member_list = struct_member struct_member_list | EPSILON ;
 struct_member = field_decl | struct_method ;
-struct_method = "fn" identifier "(" param_list_opt ")" type_guide_opt effect_spec_opt contract_list block_stmt ;
+struct_method = "fn" function_name "(" param_list_opt ")" type_guide_opt effect_spec_opt contract_list block_stmt ;
 field_decl = identifier ":" dataType ";" ;
 
 enum_decl = enum_decl_no_semi ;
@@ -67,19 +69,20 @@ variant_args_opt = "(" dataType_list ")" | EPSILON ;
 interface_decl = interface_decl_no_semi ;
 interface_decl_no_semi = "interface" identifier type_params_opt "{" method_sig_list "}" ;
 method_sig_list = method_sig method_sig_list | EPSILON ;
-method_sig = "fn" identifier "(" param_list_opt ")" type_guide_opt effect_spec_opt ";" ;
+method_sig = "fn" function_name "(" param_list_opt ")" type_guide_opt effect_spec_opt ";" ;
 
 dataType_list = dataType dataType_list_tail ;
 dataType_list_tail = "," dataType dataType_list_tail | EPSILON ;
 dataType = base_dataType dataType_tail ;
 dataType_tail = "->" dataType | EPSILON ;
 
-base_dataType = "int" | "float" | "bool" | "string" | "void" | "never"
-          | identifier type_args_opt
+base_dataType = "int" | "float" | "bool" | "string" | "void" | "never" | "any"
+          | qualified_id type_args_opt
           | "[" dataType "]"
+          | "map" "[" dataType "]" dataType
           | "ptr" "<" dataType ">"
           | "ref" "<" dataType ">"
-          | "(" dataType ")" ;
+          | "(" dataType_list ")" ;
 
 type_args_opt = "<" dataType_list ">" | EPSILON ;
 type_params_opt = "<" type_params ">" | EPSILON ;
@@ -112,10 +115,10 @@ additive_tail = "+" multiplicative additive_tail | "-" multiplicative additive_t
 multiplicative = unary multiplicative_tail ;
 multiplicative_tail = "*" unary multiplicative_tail | "/" unary multiplicative_tail | "mod" unary multiplicative_tail | "div" unary multiplicative_tail | EPSILON ;
 
-unary = primary | unary_op unary ;
+unary = primary | unary_op unary | "await" unary | "go" identifier_expr ;
 unary_op = "+" | "-" | "not" | "!" | "*" | "&" ;
 
-primary = "(" expression ")" | "true" | "false" | "null" | "return" | integer_literal | float_literal | string_literal | identifier_expr | arrow_func | array_lit | "comptime" block_stmt ;
+primary = "(" expression ")" | "true" | "false" | "null" | integer_literal | float_literal | string_literal | identifier_expr | arrow_func | array_lit | map_lit | "comptime" block_stmt | return_stmt ;
 
 identifier_expr = identifier trailer_list ;
 trailer_list = trailer trailer_list | EPSILON ;
@@ -129,7 +132,9 @@ arg_list_tail = "," expression arg_list_tail | EPSILON ;
 param_list_opt = param_list | EPSILON ;
 param_list = parameter param_list_tail ;
 param_list_tail = "," parameter param_list_tail | EPSILON ;
-parameter = identifier type_guide_opt assign_expr_opt ;
+parameter = variadic_param | named_param ;
+named_param = identifier type_guide_opt assign_expr_opt ;
+variadic_param = "..." identifier ":" dataType ;
 
 statement = statement_no_semi
           | statement_with_semi ";"
@@ -173,7 +178,9 @@ handle_stmt = "handle" expression "with" "{" handler_list "}" ;
 handler_list = handler handler_list | EPSILON ;
 handler = "effect" identifier "(" param_list_opt ")" "->" block_stmt ;
 
-transaction_stmt = "transaction" "(" region_expr ")" block_stmt ;
+transaction_stmt = "transaction" "(" region_expr_list ")" block_stmt ;
+region_expr_list = region_expr region_expr_list_tail ;
+region_expr_list_tail = "|" region_expr region_expr_list_tail | EPSILON ;
 region_expr = identifier | "shared" identifier ;
 
 unsafe_stmt = "unsafe" block_stmt ;
@@ -201,10 +208,15 @@ actor_body = actor_field_list actor_method_list ;
 actor_field_list = actor_field actor_field_list | EPSILON ;
 actor_field = "state" identifier ":" dataType assign_expr_opt ";" ;
 actor_method_list = actor_method actor_method_list | EPSILON ;
-actor_method = msg_or_query identifier "(" param_list_opt ")" type_guide_opt effect_spec_opt contract_list block_stmt ;
+actor_method = msg_or_query function_name "(" param_list_opt ")" type_guide_opt effect_spec_opt contract_list block_stmt ;
 msg_or_query = "msg" | "query" ;
 
 arrow_func = "fn" "(" param_list_opt ")" effect_spec_opt "->" arrow_body ;
 arrow_body = expression | block_stmt ;
 array_lit = "[" arg_list_opt "]" ;
+map_lit = "map" "[" dataType "]" dataType "{" map_entry_list_opt "}" ;
+map_entry_list_opt = map_entry_list | EPSILON ;
+map_entry_list = map_entry map_entry_list_tail ;
+map_entry_list_tail = "," map_entry map_entry_list_tail | EPSILON ;
+map_entry = expression ":" expression ;
 ```

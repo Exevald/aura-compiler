@@ -1,0 +1,38 @@
+module std.config;
+
+import std.core as core;
+import std.env as env;
+import std.log as log;
+
+export fn get(key: string) : string {
+    return env.get(key);
+};
+
+export fn require(key: string) : string {
+    if (!env.has(key)) {
+        log.Fatal("missing required config key", key);
+        return "";
+    }
+    return env.get(key);
+};
+
+export fn get_int(key: string, fallback: int) : int {
+    if (!env.has(key)) {
+        return fallback;
+    }
+    return core.to_int(env.get(key));
+};
+
+export fn get_bool(key: string, fallback: bool) : bool {
+    if (!env.has(key)) {
+        return fallback;
+    }
+    return core.to_bool(env.get(key));
+};
+
+export fn get_duration_ms(key: string, fallback: int) : int {
+    if (!env.has(key)) {
+        return fallback;
+    }
+    return core.to_int(env.get(key));
+};

@@ -1,0 +1,9 @@
+module samples.unsafe_capabilities;
+
+import std.io as io;
+
+unsafe {
+    var value: int = 42;
+    var address: ptr<int> = &value;
+    io.println("unsafe value:", *address);
+}

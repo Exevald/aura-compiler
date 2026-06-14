@@ -1,9 +1,10 @@
 #include "../core/values/ValueHelper.h"
-#include "../runtime/stdlib/DiagnosticsModule.h"
+#include "../runtime/stdlib/memory/MemoryModule.h"
 #include "VirtualMachine.h"
 #include "common/VirtualMachineRuntimeSupport.h"
 
 #include <algorithm>
+#include <optional>
 #include <utility>
 
 namespace VM::Execution
@@ -14,6 +15,29 @@ using Detail::Fail;
 using Detail::ReadErrorMessage;
 using Detail::ReadStringConstant;
 using Detail::RuntimeError;
+
+namespace
+{
+
+std::optional<std::string> EncodeMapKey(const Value& value)
+{
+	if (std::holds_alternative<Core::StringPtr>(value))
+	{
+		const auto stringValue = std::get<Core::StringPtr>(value);
+		return "s:" + (stringValue ? *stringValue : "");
+	}
+	if (std::holds_alternative<int64_t>(value))
+	{
+		return "i:" + std::to_string(std::get<int64_t>(value));
+	}
+	if (std::holds_alternative<bool>(value))
+	{
+		return std::get<bool>(value) ? "b:true" : "b:false";
+	}
+	return std::nullopt;
+}
+
+} // namespace
 
 int VirtualMachine::DataExecutor::BuildArray(const uint8_t count) const
 {
@@ -27,6 +51,25 @@ int VirtualMachine::DataExecutor::BuildArray(const uint8_t count) const
 	std::ranges::reverse(array->elements);
 
 	vm.m_context.PushValue(array);
+	return 0;
+}
+
+int VirtualMachine::DataExecutor::BuildMap(const uint8_t pairCount) const
+{
+	auto map = std::make_shared<Core::MapHandle>();
+	for (int i = 0; i < pairCount; ++i)
+	{
+		const Value value = vm.m_context.PopValue();
+		const Value key = vm.m_context.PopValue();
+		const auto encodedKey = EncodeMapKey(key);
+		if (!encodedKey)
+		{
+			return Fail(vm.m_context, "Map keys must be string, int, or bool");
+		}
+		map->entries[*encodedKey] = Core::MapHandle::Entry{ key, value };
+	}
+
+	vm.m_context.PushValue(map);
 	return 0;
 }
 
@@ -94,9 +137,29 @@ int VirtualMachine::DataExecutor::HandleArrayIndexGet() const
 {
 	const Value indexVal = vm.m_context.PopValue();
 	const Value container = vm.m_context.PopValue();
+	if (std::holds_alternative<Core::MapPtr>(container))
+	{
+		const auto& map = std::get<Core::MapPtr>(container);
+		const auto encodedKey = EncodeMapKey(indexVal);
+		if (!map || !encodedKey)
+		{
+			return Fail(vm.m_context, "Map keys must be string, int, or bool");
+		}
+
+		const std::lock_guard lock(map->mutex);
+		const auto it = map->entries.find(*encodedKey);
+		if (it == map->entries.end())
+		{
+			return Fail(vm.m_context, "Map key not found");
+		}
+
+		vm.m_context.PushValue(it->second.value);
+		return 0;
+	}
+
 	if (!std::holds_alternative<Core::ArrayPtr>(container))
 	{
-		return Fail(vm.m_context, "Only arrays can be indexed");
+		return Fail(vm.m_context, "Only arrays and maps can be indexed");
 	}
 
 	const auto& arr = std::get<Core::ArrayPtr>(container);
@@ -106,7 +169,12 @@ int VirtualMachine::DataExecutor::HandleArrayIndexGet() const
 		return Fail(vm.m_context, "Index out of bounds");
 	}
 
-	vm.m_context.PushValue(arr->elements[idx]);
+	Value element;
+	if (!vm.m_context.GetArrayElement(arr, static_cast<size_t>(idx), element))
+	{
+		return Fail(vm.m_context, "Index out of bounds");
+	}
+	vm.m_context.PushValue(element);
 	return 0;
 }
 
@@ -115,9 +183,24 @@ int VirtualMachine::DataExecutor::HandleArrayIndexSet() const
 	const Value val = vm.m_context.PopValue();
 	const Value indexVal = vm.m_context.PopValue();
 	const Value container = vm.m_context.PopValue();
+	if (std::holds_alternative<Core::MapPtr>(container))
+	{
+		const auto& map = std::get<Core::MapPtr>(container);
+		const auto encodedKey = EncodeMapKey(indexVal);
+		if (!map || !encodedKey)
+		{
+			return Fail(vm.m_context, "Map keys must be string, int, or bool");
+		}
+
+		const std::lock_guard lock(map->mutex);
+		map->entries[*encodedKey] = Core::MapHandle::Entry{ indexVal, val };
+		vm.m_context.PushValue(val);
+		return 0;
+	}
+
 	if (!std::holds_alternative<Core::ArrayPtr>(container))
 	{
-		return Fail(vm.m_context, "Only arrays support indexed assignment");
+		return Fail(vm.m_context, "Only arrays and maps support indexed assignment");
 	}
 
 	const auto& arr = std::get<Core::ArrayPtr>(container);
@@ -127,7 +210,10 @@ int VirtualMachine::DataExecutor::HandleArrayIndexSet() const
 		return Fail(vm.m_context, "Array index out of bounds");
 	}
 
-	arr->elements[idx] = val;
+	if (!vm.m_context.SetArrayElement(arr, static_cast<size_t>(idx), val))
+	{
+		return Fail(vm.m_context, "Array index out of bounds");
+	}
 	vm.m_context.PushValue(val);
 	return 0;
 }
@@ -146,7 +232,12 @@ int VirtualMachine::DataExecutor::HandleMemberGet(const uint8_t fieldIdx) const
 		return Fail(vm.m_context, "Field index out of bounds");
 	}
 
-	vm.m_context.PushValue(inst->fields[fieldIdx]);
+	Value fieldValue;
+	if (!vm.m_context.GetInstanceField(inst, fieldIdx, fieldValue))
+	{
+		return Fail(vm.m_context, "Field index out of bounds");
+	}
+	vm.m_context.PushValue(fieldValue);
 	return 0;
 }
 
@@ -165,7 +256,10 @@ int VirtualMachine::DataExecutor::HandleMemberSet(const uint8_t fieldIdx) const
 		return Fail(vm.m_context, "Field index out of bounds");
 	}
 
-	inst->fields[fieldIdx] = val;
+	if (!vm.m_context.SetInstanceField(inst, fieldIdx, val))
+	{
+		return Fail(vm.m_context, "Field index out of bounds");
+	}
 	vm.m_context.PushValue(val);
 	return 0;
 }
@@ -187,10 +281,24 @@ int VirtualMachine::DataExecutor::HandleModuleMemberGet(
 	}
 
 	const auto& module = std::get<Core::ModulePtr>(object);
+	if (module->cacheableMembers)
+	{
+		if (const auto cached = module->memberCache.find(*memberName);
+			cached != module->memberCache.end())
+		{
+			vm.m_context.PushValue(cached->second);
+			return 0;
+		}
+	}
+
 	Value member;
 	if (!vm.m_context.GetGlobal(module->name + "." + *memberName, member))
 	{
 		return Fail(vm.m_context, "Undefined module member: " + module->name + "." + *memberName);
+	}
+	if (module->cacheableMembers)
+	{
+		module->memberCache.emplace(*memberName, member);
 	}
 
 	vm.m_context.PushValue(member);
@@ -277,8 +385,15 @@ int VirtualMachine::DataExecutor::HandleAddressOfMember() const
 			return Fail(vm.m_context, "Array index out of bounds");
 		}
 
-		ptr->get = [arr, idx] { return arr->elements[idx]; };
-		ptr->set = [arr, idx](const Value& v) { arr->elements[idx] = v; };
+		auto* ctx = &vm.m_context;
+		ptr->get = [ctx, arr, idx] {
+			Value value;
+			ctx->GetArrayElement(arr, static_cast<size_t>(idx), value);
+			return value;
+		};
+		ptr->set = [ctx, arr, idx](const Value& v) {
+			ctx->SetArrayElement(arr, static_cast<size_t>(idx), v);
+		};
 	}
 	else if (std::holds_alternative<Core::InstancePtr>(container))
 	{
@@ -289,8 +404,15 @@ int VirtualMachine::DataExecutor::HandleAddressOfMember() const
 			return Fail(vm.m_context, "Field index out of bounds");
 		}
 
-		ptr->get = [inst, idx] { return inst->fields[idx]; };
-		ptr->set = [inst, idx](const Value& v) { inst->fields[idx] = v; };
+		auto* ctx = &vm.m_context;
+		ptr->get = [ctx, inst, idx] {
+			Value value;
+			ctx->GetInstanceField(inst, static_cast<size_t>(idx), value);
+			return value;
+		};
+		ptr->set = [ctx, inst, idx](const Value& v) {
+			ctx->SetInstanceField(inst, static_cast<size_t>(idx), v);
+		};
 	}
 	else
 	{

@@ -149,7 +149,7 @@ Rules RulesBuilder::BuildGuidedRules()
 		{
 			for (size_t i = 0; i < r.rhs.size(); ++i)
 			{
-				if (m_nonTerms.count(r.rhs[i]))
+				if (m_nonTerms.contains(r.rhs[i]))
 				{
 					std::vector<std::string> rest(r.rhs.begin() + i + 1, r.rhs.end());
 					auto firstRest = GetFirst(rest);

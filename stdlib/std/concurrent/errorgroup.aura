@@ -1,0 +1,54 @@
+module std.concurrent.errorgroup;
+
+import std.array as array;
+import std.context as ctx;
+import std.option as option;
+import std.result as result;
+import std.task as task;
+import std.task_native as native_task;
+
+struct ErrorGroup {
+    context_value: std.context.Context;
+    tasks: [task.Task<void>];
+}
+
+export fn with_context(parent: std.context.Context) : ErrorGroup {
+    return ErrorGroup(ctx.with_cancel(parent), []);
+};
+
+export fn background() : ErrorGroup {
+    return with_context(ctx.background());
+};
+
+export fn group_context(group: ErrorGroup) : std.context.Context {
+    return group.context_value;
+};
+
+export fn add(group: ErrorGroup, task_value: task.Task<void>) : void {
+    array.push(group.tasks, task_value);
+};
+
+export fn spawn(group: ErrorGroup, callee, ...args: any) : task.Task<void> {
+    var task_value: task.Task<void> = native_task.go_call(callee, args);
+    add(group, task_value);
+    return task_value;
+};
+
+export fn count(group: ErrorGroup) : int {
+    return array.len(group.tasks);
+};
+
+export fn wait(group: ErrorGroup) : option.Option<string> {
+    var i: int = 0;
+    var first_error = option.None();
+    while (i < array.len(group.tasks)) {
+        var outcome = task.join_result(group.tasks[i]);
+        if (outcome.tag == 1 and first_error.tag == 1) {
+            var err: string = outcome[0];
+            first_error = option.Some(err);
+            ctx.cancel(group.context_value);
+        }
+        i = i + 1;
+    }
+    return first_error;
+};

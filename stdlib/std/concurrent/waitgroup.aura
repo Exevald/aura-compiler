@@ -1,0 +1,36 @@
+module std.concurrent.waitgroup;
+
+import std.array as array;
+import std.task as task;
+import std.task_native as native_task;
+
+struct WaitGroup {
+    tasks: [task.Task<void>];
+}
+
+export fn new() : WaitGroup {
+    return WaitGroup([]);
+};
+
+export fn add(group: WaitGroup, task_value: task.Task<void>) : void {
+    array.push(group.tasks, task_value);
+};
+
+export fn spawn(group: WaitGroup, callee, ...args: any) : task.Task<void> {
+    var task_value: task.Task<void> = native_task.go_call(callee, args);
+    add(group, task_value);
+    return task_value;
+};
+
+export fn count(group: WaitGroup) : int {
+    return array.len(group.tasks);
+};
+
+export fn wait(group: WaitGroup) : void {
+    var i: int = 0;
+    while (i < array.len(group.tasks)) {
+        task.join(group.tasks[i]);
+        i = i + 1;
+    }
+    return;
+};

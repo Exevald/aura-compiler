@@ -1,0 +1,19 @@
+module samples.config_and_backoff;
+
+import std.backoff as backoff;
+import std.config as config;
+import std.io as io;
+
+var policy = backoff.exponential(5, 2, 40);
+
+fn try_connect(attempt: int, wait_millis: int) : bool {
+    io.println("attempt", attempt, "delay", wait_millis);
+    return attempt >= 2;
+}
+
+io.println("service.port", config.get_int("SERVICE_PORT", 8080));
+io.println("debug.enabled", config.get_bool("DEBUG", false));
+io.println("timeout.ms", config.get_duration_ms("TIMEOUT_MS", 250));
+io.println("retry.delay.0", backoff.delay(policy, 0));
+io.println("retry.delay.3", backoff.delay(policy, 3));
+io.println("retry.success", backoff.retry(4, policy, try_connect));

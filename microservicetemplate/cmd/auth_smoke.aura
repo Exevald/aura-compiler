@@ -1,0 +1,7 @@
+module microservicetemplate.cmd.auth_smoke;
+
+import microservicetemplate.internal.infrastructure.auth.jwt_token_parser as jwt;
+
+const parser: jwt.JwtTokenParser = jwt.JwtTokenParser("dev-secret");
+const parsed = parser.parse_bearer("");
+print parsed.tag;

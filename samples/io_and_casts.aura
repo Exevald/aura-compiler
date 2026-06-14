@@ -1,0 +1,25 @@
+module samples.io_and_casts;
+
+import std.core as core;
+import std.io as io;
+
+io.print("print", 1, true);
+io.println(" <- println continues on the same line above");
+io.printf("printf: %s %d %f %t", "value", 7, 2.5, false);
+io.println("");
+
+var token: string = io.read();
+var line: string = io.readln();
+
+var parsedInt: int = core.to_int(token);
+var parsedFloat: float = core.to_float("3.5");
+var parsedBool: bool = core.to_bool("true");
+
+io.println("read() token =", token);
+io.println("readln() tail =", line);
+io.println("as string =", core.to_string(parsedInt));
+io.println("float =", parsedFloat);
+io.println("bool =", parsedBool);
+
+var matrix = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+io.println("matrix", matrix);

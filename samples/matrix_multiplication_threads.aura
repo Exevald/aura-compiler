@@ -1,0 +1,49 @@
+module samples.matrix_multiplication_threads;
+
+import std.array as array;
+import std.io as io;
+import std.task as task;
+
+var left: [[int]] = [
+    [1, 2, 3],
+    [4, 5, 6]
+];
+
+var right: [[int]] = [
+    [7, 8],
+    [9, 10],
+    [11, 12]
+];
+
+fn dot(row: int, col: int) : int {
+    return left[row][0] * right[0][col]
+        + left[row][1] * right[1][col]
+        + left[row][2] * right[2][col];
+}
+
+fn compute_row(row: int) : [int] {
+    return [row, dot(row, 0), dot(row, 1)];
+};
+
+var tasks: [task.Task<[int]>] = [];
+var row: int = 0;
+while (row < array.len(left)) {
+    array.push(tasks, task.spawn(compute_row, row));
+    row = row + 1;
+}
+
+var result: [[int]] = [
+    [0, 0],
+    [0, 0]
+];
+var task_index: int = 0;
+while (task_index < array.len(tasks)) {
+    var row_result = task.join(tasks[task_index]);
+    result[row_result[0]] = [row_result[1], row_result[2]];
+    task_index = task_index + 1;
+}
+
+io.println("left =", left);
+io.println("right =", right);
+io.println("result =", result);
+io.println("rows =", array.len(left));

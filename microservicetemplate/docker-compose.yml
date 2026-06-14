@@ -1,0 +1,83 @@
+services:
+  mysql:
+    image: mysql:8.0.36
+    container_name: aura-microservicetemplate-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: microservicetemplate
+      MYSQL_USER: aura
+      MYSQL_PASSWORD: aura
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  migrate:
+    image: aura-microservicetemplate:local
+    build:
+      context: ..
+      dockerfile: microservicetemplate/Dockerfile
+    container_name: aura-microservicetemplate-migrate
+    working_dir: /app/microservicetemplate
+    command: ["/app/aura-compiler", "run", "/app/microservicetemplate/cmd/migrate.aura"]
+    environment:
+      MYSQL_DSN: "host=mysql;port=3306;user=aura;password=aura;database=microservicetemplate"
+      AUTH_JWT_SECRET: "dev-secret"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    image: aura-microservicetemplate:local
+    build:
+      context: ..
+      dockerfile: microservicetemplate/Dockerfile
+    container_name: aura-microservicetemplate-app
+    working_dir: /app/microservicetemplate
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8082"
+      MYSQL_POOL_SIZE: "4"
+      READ_TIMEOUT_MS: "1000"
+      WRITE_TIMEOUT_MS: "1000"
+      MYSQL_DSN: "host=mysql;port=3306;user=aura;password=aura;database=microservicetemplate"
+      AUTH_JWT_SECRET: "dev-secret"
+    ports:
+      - "8082:8082"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  ai-gateway:
+    image: aura-ai-gateway:local
+    build:
+      context: ..
+      dockerfile: microservicetemplate/ai_gateway/Dockerfile
+    container_name: aura-ai-gateway
+    working_dir: /app/microservicetemplate/ai_gateway
+    environment:
+      AI_GATEWAY_PROVIDER_URL: "https://api.openai.com/v1/chat/completions"
+      AI_GATEWAY_API_KEY: ""
+      AI_GATEWAY_MODE: "mock"
+      AI_GATEWAY_MODEL: "qwen-plus"
+      AI_GATEWAY_HTTP_PORT: "8084"
+    ports:
+      - "8084:8084"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8084/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+volumes:
+  mysql-data:

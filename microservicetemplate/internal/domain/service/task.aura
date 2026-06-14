@@ -1,0 +1,58 @@
+module microservicetemplate.internal.domain.service.task;
+
+import std.result as result;
+
+import microservicetemplate.internal.domain.model.task as domaintask;
+
+fn valid_status(status: string) : bool {
+    return status == "todo" or status == "in_progress" or status == "resolved" or status == "done";
+};
+
+fn normalize_status(status: string) : string {
+    if (status == "done") {
+        return "resolved";
+    }
+    return status;
+};
+
+fn validation_error(message: string) : result.Result<domaintask.Task, string> {
+    return result.Err("validation:" + message);
+};
+
+export fn create_new_task(
+    owner_user_id: string,
+    title: string,
+    description: string,
+    status: string) : result.Result<domaintask.Task, string> {
+    if (owner_user_id == "") {
+        return validation_error("owner user id is required");
+    }
+    if (title == "") {
+        return validation_error("title is required");
+    }
+    if (!valid_status(status)) {
+        return validation_error("status must be one of todo, in_progress, resolved");
+    }
+    return result.Ok(domaintask.Task(0, owner_user_id, title, description, normalize_status(status), "", ""));
+};
+
+export fn update_task(
+    existing: domaintask.Task,
+    title: string,
+    description: string,
+    status: string) : result.Result<domaintask.Task, string> {
+    if (title == "") {
+        return validation_error("title is required");
+    }
+    if (!valid_status(status)) {
+        return validation_error("status must be one of todo, in_progress, resolved");
+    }
+    return result.Ok(domaintask.Task(
+        existing.id,
+        existing.owner_user_id,
+        title,
+        description,
+        normalize_status(status),
+        existing.created_at,
+        existing.updated_at));
+};

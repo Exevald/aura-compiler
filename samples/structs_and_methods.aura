@@ -1,0 +1,22 @@
+module samples.structs_and_methods;
+
+import std.io as io;
+
+struct Counter {
+    name: string;
+    value: int;
+
+    fn increment() : int {
+        value = value + 1;
+        return value;
+    }
+
+    fn describe() : string {
+        return name + " = " + value;
+    }
+}
+
+var counter: Counter = Counter("clicks", 10);
+io.println("before =", counter.describe());
+io.println("increment() =", counter.increment());
+io.println("after =", counter.describe());

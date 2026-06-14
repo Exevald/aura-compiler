@@ -1,0 +1,14 @@
+module microservicetemplate.cmd.migrate;
+
+import std.config as config;
+import std.db.mysql as db;
+import std.io as io;
+
+const dsn = config.require("MYSQL_DSN");
+const conn = db.open(dsn);
+const migration_sql = io.read_file("data/001_task.sql");
+
+const result = db.exec_stmt(conn, migration_sql, []);
+
+io.println("migration affected rows =", db.affected_rows(result));
+db.close(conn);

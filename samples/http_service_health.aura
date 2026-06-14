@@ -1,0 +1,46 @@
+module samples.http_service_health;
+
+import std.config as config;
+import std.http.server as server;
+import std.json as json;
+import std.service as service;
+
+var host = service.host_or("0.0.0.0");
+var port = service.port_or(8080);
+var read_timeout_ms = config.get_duration_ms("READ_TIMEOUT_MS", 1000);
+var write_timeout_ms = config.get_duration_ms("WRITE_TIMEOUT_MS", 1000);
+var shutdown = service.shutdown_context();
+var readiness = service.store_new();
+
+service.store_set(readiness, "status", "ready");
+
+fn route(request: [string]) : string {
+    if (server.route_equals(request, "GET", "/healthz")) {
+        return server.ok_json(json.object([
+            json.field("ok", json.encode_bool(true))
+        ]));
+    }
+
+    if (server.route_equals(request, "GET", "/readyz")) {
+        var status = service.store_get(readiness, "status");
+        if (status == "ready") {
+            return server.ok_json(json.object([
+                json.field("ready", json.encode_bool(true))
+            ]));
+        }
+
+        return server.json(503, json.object([
+            json.field("ready", json.encode_bool(false))
+        ]));
+    }
+
+    return server.not_found("missing");
+}
+
+server.listen_and_serve_with(
+    host,
+    port,
+    route,
+    shutdown,
+    read_timeout_ms,
+    write_timeout_ms);

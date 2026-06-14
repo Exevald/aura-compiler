@@ -1,0 +1,79 @@
+import "../infrastructure/ai_client.stas"
+import "../../bin/stl/modules/file.stasm"
+import "../../bin/stl/modules/http_server.stasm"
+import "../../bin/stl/modules/json.stasm"
+
+func body_value(string body, string key): string {
+    let JsonConverter jsonConv = new JsonConverter<Idle>();
+    let JsonConverter jsonState = jsonConv.parse(body);
+    let StringMap bodyMap = jsonState.resultMap;
+    jsonConv = jsonState.reset();
+    return map_get(bodyMap, key);
+}
+
+let string providerUrl = "__AI_GATEWAY_PROVIDER_URL__";
+let string providerApiKey = "__AI_GATEWAY_API_KEY__";
+let string providerMode = "__AI_GATEWAY_MODE__";
+let string providerModel = "__AI_GATEWAY_MODEL__";
+let string providerPort = "__AI_GATEWAY_HTTP_PORT__";
+
+let AiClient client = new AiClient<Ready>(providerUrl, providerApiKey, providerMode, providerModel);
+let HttpServer serverOff = new HttpServer<Offline>();
+let HttpServer server = serverOff.start(to_int(providerPort));
+print("AI gateway running on " + providerPort + "...");
+
+let string okJson = '{"status": "ok"}';
+let string readyJson = '{"status": "ready"}';
+let string indexHtml = file_read("/app/microservicetemplate/web/index.html");
+let string stylesCss = file_read("/app/microservicetemplate/web/styles.css");
+let string appJs = file_read("/app/microservicetemplate/web/app.js");
+
+while (true) {
+    let HttpServer reqState = server.accept();
+
+    let ServerRequest reqInit = new ServerRequest<Init>();
+    let ServerRequest req = reqInit.parse(reqState.reqHandle);
+
+    if (req.method == "OPTIONS") {
+        req.respond(200, "", "text/plain");
+    }
+    else if (req.method == "GET" and req.path == "/") {
+        req.respond(200, indexHtml, "text/html");
+    }
+    else if (req.method == "GET" and req.path == "/styles.css") {
+        req.respond(200, stylesCss, "text/css");
+    }
+    else if (req.method == "GET" and req.path == "/app.js") {
+        req.respond(200, appJs, "application/javascript");
+    }
+    else if (req.method == "GET" and req.path == "/healthz") {
+        req.respond(200, okJson, "application/json");
+    }
+    else if (req.method == "GET" and req.path == "/readyz") {
+        req.respond(200, readyJson, "application/json");
+    }
+    else if (req.method == "POST" and req.path == "/api/highlight") {
+        let string highlightPrompt = body_value(req.body, "prompt");
+        let string highlightTemp = body_value(req.body, "temperature");
+        if (highlightTemp == "") {
+            highlightTemp = "0.2";
+        }
+        let AiClient highlightAnswer = client.ask("highlight", highlightPrompt, highlightTemp);
+        let string highlightResponseJson = '{"response": "' + json_escape(highlightAnswer.response) + '"}';
+        req.respond(200, highlightResponseJson, "application/json");
+    }
+    else if (req.method == "POST" and req.path == "/api/summary") {
+        let string summaryPrompt = body_value(req.body, "prompt");
+        let string summaryTemp = body_value(req.body, "temperature");
+        if (summaryTemp == "") {
+            summaryTemp = "0.2";
+        }
+        let AiClient summaryAnswer = client.ask("summary", summaryPrompt, summaryTemp);
+        let string summaryResponseJson = '{"response": "' + json_escape(summaryAnswer.response) + '"}';
+        req.respond(200, summaryResponseJson, "application/json");
+    } else {
+        req.respond(404, '{"error": "Not found"}', "application/json");
+    }
+
+    server = reqState.resume();
+}

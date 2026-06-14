@@ -1,0 +1,54 @@
+module std.backoff;
+
+import std.time as time;
+
+struct Policy {
+    base_millis: int;
+    factor: int;
+    max_millis: int;
+}
+
+export fn constant(delay_millis: int) : Policy {
+    return Policy(delay_millis, 1, delay_millis);
+};
+
+export fn exponential(base_millis: int, factor: int, max_millis: int) : Policy {
+    return Policy(base_millis, factor, max_millis);
+};
+
+export fn delay(policy: Policy, attempt: int) : int {
+    var safe_attempt: int = attempt;
+    if (safe_attempt < 0) {
+        safe_attempt = 0;
+    }
+    var current: int = policy.base_millis;
+    var i: int = 0;
+    while (i < safe_attempt) {
+        current = current * policy.factor;
+        if (current >= policy.max_millis) {
+            return policy.max_millis;
+        }
+        i = i + 1;
+    }
+    if (current > policy.max_millis) {
+        return policy.max_millis;
+    }
+    return current;
+};
+
+export fn sleep(policy: Policy, attempt: int) : void {
+    var wait_millis: int = delay(policy, attempt);
+    time.sleep(wait_millis);
+};
+
+export fn retry(max_attempts: int, policy: Policy, action) : bool {
+    var attempt: int = 0;
+    while (attempt < max_attempts) {
+        var wait_millis: int = delay(policy, attempt);
+        if (action(attempt, wait_millis)) {
+            return true;
+        }
+        attempt = attempt + 1;
+    }
+    return false;
+};

@@ -1,0 +1,67 @@
+module std.core;
+
+import std.core_native as native;
+
+export fn len(value: any) : int {
+    return native.len(value);
+};
+
+export fn max<T>(left: T, right: T) : T {
+    return native.max(left, right);
+};
+
+export fn min<T>(left: T, right: T) : T {
+    return native.min(left, right);
+};
+
+export fn abs<T>(value: T) : T {
+    return native.abs(value);
+};
+
+export fn sort<T>(values: [T]) : [T] {
+    return native.sort(values);
+};
+
+export fn push<T>(values: [T], value: T) : [T] {
+    return native.push(values, value);
+};
+
+export fn pop<T>(values: [T]) : T {
+    return native.pop(values);
+};
+
+export fn remove<T>(values: [T], item: T) : [T] {
+    return native.remove(values, item);
+};
+
+export fn remove_at<T>(values: [T], index: int) : [T] {
+    return native.remove_at(values, index);
+};
+
+export fn concat(left: string, right: string) : string {
+    return native.concat(left, right);
+};
+
+export fn contains(text: string, part: string) : bool {
+    return native.contains(text, part);
+};
+
+export fn to_string(value: any) : string {
+    return native.to_string(value);
+};
+
+export fn to_int(value: any) : int {
+    return native.to_int(value);
+};
+
+export fn to_float(value: any) : float {
+    return native.to_float(value);
+};
+
+export fn to_bool(value: any) : bool {
+    return native.to_bool(value);
+};
+
+export fn clamp<T>(value: T, low: T, high: T) : T {
+    return native.clamp(value, low, high);
+};

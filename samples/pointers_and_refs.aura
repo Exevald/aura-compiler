@@ -1,0 +1,19 @@
+module samples.pointers_and_refs;
+
+import std.io as io;
+
+fn set_to_ten(target: ref<int>) : void {
+    *target = 10;
+}
+
+unsafe {
+    var value: int = 4;
+    var address: ptr<int> = &value;
+
+    io.println("value before pointer write =", value);
+    *address = *address + 3;
+    io.println("value after pointer write =", value);
+
+    set_to_ten(value);
+    io.println("value after ref call =", value);
+}

@@ -1,0 +1,14 @@
+module samples.outbox_rabbitmq_relay;
+
+import std.db.mysql as db;
+import std.mq.rabbitmq as mq;
+import std.outbox as outbox;
+
+var conn = db.open("host=127.0.0.1;port=3306;user=aura;password=aura_pass;database=aura_test");
+var rabbit = mq.open("amqp://guest:guest@127.0.0.1:5672/");
+
+print mq.error(rabbit);
+print outbox.run_rabbitmq_relay(conn, rabbit, 32);
+
+mq.close(rabbit);
+db.close(conn);

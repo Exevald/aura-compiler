@@ -1,0 +1,76 @@
+import "../../bin/stl/modules/http.stasm"
+import "../../bin/stl/modules/json.stasm"
+import "../../bin/stl/modules/string.stasm"
+
+schema AiClient
+{
+    state Ready(string apiUrl, string apiKey, string mode, string model) {
+        func ask(string kind, string prompt, string temp) -> Answered
+    }
+
+    state Answered(string response, string apiUrl, string apiKey, string mode, string model) {
+        func reset() -> Ready
+    }
+}
+
+func mock_highlight_response(string prompt): string {
+    return "1|Review the top blockers and deadlines\n2|Focus on the next task in progress\n3|Resolve the oldest open item";
+}
+
+func mock_summary_response(string prompt): string {
+    return "Board summary: prioritize blockers, keep work moving, and resolve the oldest open items first.";
+}
+
+impl AiClient<Ready>
+{
+    public func ask(string kind, string prompt, string temp) -> AiClient<Answered> {
+        if (this.mode == "mock") {
+            let string mockResponse = "";
+            if (kind == "highlight") {
+                mockResponse = mock_highlight_response(prompt);
+            } else {
+                mockResponse = mock_summary_response(prompt);
+            }
+            return new AiClient<Answered>(mockResponse, this.apiUrl, this.apiKey, this.mode, this.model);
+        }
+
+        const string body =
+            '{"model": "' + json_escape(this.model) + '",' +
+            '"temperature": ' + temp + ',' +
+            '"messages": [' +
+                '{"role": "system", "content": "You are a task tracker assistant."},' +
+                '{"role": "user", "content": "' + json_escape(prompt) + '"}' +
+            ']}';
+
+        let HttpRequest reqInit = new HttpRequest<Idle>();
+        let HttpRequest reqBuild = reqInit
+            .init()
+            .url(this.apiUrl)
+            .method("POST")
+            .header("Content-Type: application/json")
+            .body(body)
+            .timeout(100000);
+
+        if (this.apiKey != "") {
+            reqBuild = reqBuild.header("Authorization: Bearer " + this.apiKey);
+        }
+
+        let HttpRequest reqPending = reqBuild.sendAsync();
+        let HttpRequest reqResp = reqPending.await();
+        let string finalAnswer = "";
+
+        if (reqResp.status == 200) {
+            finalAnswer = ai_parse_response(reqResp.response);
+        } else {
+            finalAnswer = "API Error (HTTP " + to_str(reqResp.status) + "): " + reqResp.response;
+        }
+        return new AiClient<Answered>(finalAnswer, this.apiUrl, this.apiKey, this.mode, this.model);
+    }
+}
+
+impl AiClient<Answered>
+{
+    public func reset() -> AiClient<Ready> {
+        return new AiClient<Ready>(this.apiUrl, this.apiKey, this.mode, this.model);
+    }
+}

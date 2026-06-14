@@ -1,0 +1,21 @@
+module samples.actor_wallet;
+
+import std.io as io;
+
+actor Wallet {
+    state balance: int = 0;
+
+    msg deposit(amount: int) {
+        balance = balance + amount;
+    }
+
+    query getBalance() : int {
+        return balance;
+    }
+}
+
+var wallet = Wallet(0);
+wallet.deposit(40);
+wallet.deposit(2);
+
+io.println("wallet balance:", wallet.getBalance());

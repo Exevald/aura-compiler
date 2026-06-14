@@ -1,0 +1,8 @@
+module std.option;
+
+export enum Option<T> {
+    Some(T) | None
+};
+
+export Some;
+export None;

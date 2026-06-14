@@ -1,0 +1,32 @@
+module samples.contracts_context_and_comptime;
+
+import std.io as io;
+
+comptime fn build_base(seed: int) : int {
+    return seed * 2;
+}
+
+struct PositiveBox {
+    value: int;
+} invariant (self.value > 0)
+
+fn divide(value: int, by: int) : int
+with { logger: string }
+requires (by != 0)
+ensures (result <= value)
+{
+    io.println(logger, "dividing", value, "by", by);
+    return value / by;
+}
+
+var folded: int = comptime {
+    var base = build_base(3);
+    return base + 1;
+};
+
+var logger: string = "ctx";
+var box = PositiveBox(folded);
+
+io.println("folded =", folded);
+io.println("box =", box.value);
+io.println("division =", divide(box.value, 1));

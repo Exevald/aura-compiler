@@ -3,11 +3,14 @@
 #include "../ast/AST.h"
 #include "../ast/SymbolTable.h"
 #include "../vm/core/OpCode.h"
+#include "../vm/core/values/Value.h"
 #include "../vm/execution/chunk/Chunk.h"
 
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+class ComptimeEvaluator;
 
 class BytecodeGenerator : public ASTVisitor
 {
@@ -35,6 +38,8 @@ public:
 	void Visit(FunctionDeclNode& node) override;
 	void Visit(FunctionExprNode& node) override;
 	void Visit(CallNode& node) override;
+	void Visit(GoExprNode& node) override;
+	void Visit(AwaitExprNode& node) override;
 	void Visit(MemberAccessNode& node) override;
 	void Visit(ModuleDeclNode& node) override;
 	void Visit(ImportDeclNode& node) override;
@@ -42,16 +47,20 @@ public:
 	void Visit(PrintNode& node) override;
 	void Visit(UnsafeNode& node) override;
 	void Visit(ArrayLiteralNode& node) override;
+	void Visit(MapLiteralNode& node) override;
 	void Visit(IndexNode& node) override;
 	void Visit(IterNode& node) override;
 	void Visit(TransactionNode& node) override;
 	void Visit(HandleNode& node) override;
 
 	void Visit(ComptimeNode& node) override;
+	void Visit(ContractNode& node) override;
 	void Visit(LeafNode& node) override;
 	void Visit(RawNode& node) override;
 
 private:
+	friend class ComptimeEvaluator;
+
 	struct UpvalueInfo
 	{
 		std::string name;
@@ -68,8 +77,6 @@ private:
 			enum class RuntimeKind
 			{
 				Unknown,
-				Module,
-				Function,
 				Struct
 			} runtimeKind = RuntimeKind::Unknown;
 		};
@@ -85,6 +92,7 @@ private:
 		std::optional<std::string> methodSelfStructType;
 		std::optional<std::string> actorSelfType;
 		std::unordered_set<std::string> actorStateNames;
+		bool isEffectHandler = false;
 	};
 
 	struct MetadataRegistry
@@ -99,14 +107,23 @@ private:
 		struct FunctionSignature
 		{
 			std::vector<bool> refParams;
+			std::vector<ASTNode*> defaultArgs;
+			std::vector<std::string> contextParams;
+			std::string returnTypeName;
+			size_t requiredArity = 0;
+			bool variadic = false;
 		};
 
 		std::unordered_map<std::string, std::string> importAliases;
 		std::unordered_map<std::string, FunctionSignature> functionSignatures;
+		std::unordered_set<std::string> threadLocalGlobals;
 		std::unordered_map<std::string, std::vector<std::string>> structLayouts;
 		std::unordered_map<std::string, std::unordered_map<std::string, std::string>> structFieldTypes;
+		std::unordered_map<std::string, std::vector<std::string>> structTypeParams;
 		std::unordered_map<std::string, std::unordered_map<std::string, std::string>> structMethodNames;
+		std::unordered_map<std::string, std::string> structInvariantChecks;
 		std::unordered_map<std::string, std::vector<std::string>> actorLayouts;
+		std::unordered_map<std::string, std::vector<ASTNode*>> actorFieldDefaults;
 		std::unordered_map<std::string, std::unordered_map<std::string, std::string>> actorMethodNames;
 		std::unordered_map<std::string, std::unordered_map<std::string, bool>> actorMethodIsQuery;
 		std::unordered_map<std::string, std::vector<std::string>> interfaceMethods;
@@ -117,10 +134,14 @@ private:
 		{
 			importAliases.clear();
 			functionSignatures.clear();
+			threadLocalGlobals.clear();
 			structLayouts.clear();
 			structFieldTypes.clear();
+			structTypeParams.clear();
 			structMethodNames.clear();
+			structInvariantChecks.clear();
 			actorLayouts.clear();
+			actorFieldDefaults.clear();
 			actorMethodNames.clear();
 			actorMethodIsQuery.clear();
 			interfaceMethods.clear();
@@ -161,6 +182,7 @@ private:
 		void EmitMemberAccess(MemberAccessNode& node) const;
 
 	private:
+		void EmitContextArguments(const std::vector<std::string>& contextParams) const;
 		void EmitCallArguments(const std::vector<ASTNodePtr>& args, const std::vector<bool>& refParams = {}, size_t refOffset = 0) const;
 		bool TryEmitDirectTypeConstructorCall(const CallNode& node) const;
 		bool TryEmitMemberCall(const CallNode& node) const;
@@ -183,14 +205,23 @@ private:
 	void EmitSetVariable(const std::string& name);
 	void EmitAddressOf(ASTNode* operand);
 	void EmitCallArgument(ASTNode* arg, bool byRef);
+	void EmitContractAssertion(const std::string& message);
 	void EmitFunctionObject(const std::shared_ptr<VM::Core::Function>& function, const std::vector<UpvalueInfo>& upvalues) const;
-	void RegisterFunctionSignature(const std::string& name, const std::vector<Parameter>& params);
+	void RegisterFunctionSignature(
+		const std::string& name,
+		const std::vector<Parameter>& params,
+		const std::vector<ContextBinding>& contextRequirements = {},
+		const std::string& returnTypeName = "");
 	[[nodiscard]] std::vector<bool> ResolveFunctionRefParams(const ASTNode* callee) const;
 	void CompileFunctionBody(
 		const std::string& name,
 		const std::vector<Parameter>& params,
+		const std::vector<ContextBinding>& contextRequirements,
+		const std::vector<std::string>& raisedEffects,
+		const std::vector<ContractNode*>& contracts,
 		ASTNode* body,
-		const std::function<void()>& emitResult);
+		const std::function<void()>& emitResult,
+		bool isEffectHandler = false);
 	[[nodiscard]] static std::string DefaultImportAlias(const std::string& qualifiedName);
 	[[nodiscard]] std::optional<uint8_t> ResolveStructFieldIndex(const ASTNode* object, const std::string& member) const;
 	[[nodiscard]] std::optional<std::string> InferStructTypeName(const ASTNode* node) const;
@@ -207,9 +238,25 @@ private:
 	[[nodiscard]] std::optional<std::string> ResolveActorMethod(const ASTNode* object, const std::string& member) const;
 	[[nodiscard]] bool IsActorQueryMethod(const ASTNode* object, const std::string& member) const;
 	[[nodiscard]] std::optional<std::string> ResolveEffectOperation(const ASTNode* node) const;
+	[[nodiscard]] std::optional<std::string> EnsureStructMetadata(const std::string& typeName);
+	[[nodiscard]] std::optional<std::string> EnsureActorMetadata(const std::string& typeName);
+	[[nodiscard]] std::optional<std::string> EnsureInterfaceMetadata(const std::string& typeName);
+	[[nodiscard]] VM::Core::Value EvaluateComptime(ASTNode* node);
+	void RegisterComptimeFunctionsForChunk(
+		VM::Execution::Chunk& chunk,
+		const std::unordered_map<std::string, VM::Core::Value>& importedAliases = {});
+	[[nodiscard]] static std::string NormalizeImportedTypeName(
+		const std::unordered_map<std::string, std::string>& importAliases,
+		const std::string& typeName);
 
 	std::vector<FunctionContext> m_contexts;
 	std::string m_currentModule;
 	MetadataRegistry m_metadata;
 	size_t m_lambdaCounter = 0;
+	std::vector<std::vector<ContractNode*>> m_activeFunctionContracts;
+	std::vector<std::optional<uint8_t>> m_activeContractResultSlots;
+	std::vector<std::unordered_set<std::string>> m_activeRaisedEffects;
+	std::vector<std::unordered_set<std::string>> m_activeHandledEffects;
+	std::unordered_map<std::string, const FunctionDeclNode*> m_comptimeFunctions;
+	std::vector<std::unordered_map<std::string, VM::Core::Value>> m_comptimeBindings;
 };

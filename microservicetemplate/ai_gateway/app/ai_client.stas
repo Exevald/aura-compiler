@@ -1,0 +1,10 @@
+schema AiClient
+{
+    state Ready() {
+        func ask(string prompt, string temp) -> Answered
+    }
+
+    state Answered(string response) {
+        func reset() -> Ready
+    }
+}

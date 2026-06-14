@@ -20,8 +20,8 @@ struct StructMethodDecl
 	std::vector<Parameter> params;
 	std::vector<ContextBinding> contextRequirements;
 	std::vector<std::string> raisedEffects;
+	std::vector<std::unique_ptr<ContractNode>> contracts;
 	ASTNodePtr body;
-	std::vector<ASTNodePtr> metadata;
 
 	StructMethodDecl(
 		std::string methodName,
@@ -29,12 +29,14 @@ struct StructMethodDecl
 		std::vector<Parameter> methodParams,
 		std::vector<ContextBinding> contexts,
 		std::vector<std::string> effects,
+		std::vector<std::unique_ptr<ContractNode>> contractList,
 		ASTNodePtr methodBody)
 		: name(std::move(methodName))
 		, returnType(std::move(retType))
 		, params(std::move(methodParams))
 		, contextRequirements(std::move(contexts))
 		, raisedEffects(std::move(effects))
+		, contracts(std::move(contractList))
 		, body(std::move(methodBody))
 	{
 	}
@@ -49,20 +51,25 @@ class StructDeclNode : public ASTNode
 {
 public:
 	std::string name;
+	std::vector<TypeParameterDecl> typeParams;
 	std::vector<StructField> fields;
 	std::vector<std::string> implementedInterfaces;
 	std::vector<StructMethodDecl> methods;
-	std::vector<ASTNodePtr> metadata;
+	std::vector<std::unique_ptr<ContractNode>> contracts;
 
 	StructDeclNode(
 		std::string structName,
+		std::vector<TypeParameterDecl> genericParams,
 		std::vector<StructField> structFields,
 		std::vector<std::string> interfaces = {},
-		std::vector<StructMethodDecl> structMethods = {})
+		std::vector<StructMethodDecl> structMethods = {},
+		std::vector<std::unique_ptr<ContractNode>> contractList = {})
 		: name(std::move(structName))
+		, typeParams(std::move(genericParams))
 		, fields(std::move(structFields))
 		, implementedInterfaces(std::move(interfaces))
 		, methods(std::move(structMethods))
+		, contracts(std::move(contractList))
 	{
 	}
 

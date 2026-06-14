@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Task Pipeline</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script defer src="/app.js"></script>
+</head>
+<body data-task-api-base="http://127.0.0.1:8082">
+  <div class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Task tracker</p>
+        <h1>Pipeline board</h1>
+        <p class="subtitle">Светлый интерфейс в виде pipeline: задачи проходят стадии `todo`, `in_progress`, `resolved`, а AI помогает выделить главное и дать краткое резюме.</p>
+      </div>
+      <div class="hero-actions">
+        <button class="ghost" id="refreshBtn">Refresh</button>
+        <button class="primary" id="demoTokenBtn">Use demo token</button>
+      </div>
+    </header>
+
+    <section class="panel flow-strip">
+      <div class="flow-stat">
+        <span>Todo</span>
+        <strong id="countTodo">0</strong>
+      </div>
+      <div class="flow-stat">
+        <span>In progress</span>
+        <strong id="countInProgress">0</strong>
+      </div>
+      <div class="flow-stat">
+        <span>Resolved</span>
+        <strong id="countResolved">0</strong>
+      </div>
+      <div class="flow-stat flow-total">
+        <span>Total</span>
+        <strong id="countTotal">0</strong>
+      </div>
+    </section>
+
+    <main class="layout">
+      <section class="panel pipeline-panel">
+        <div class="panel-head">
+          <strong>Pipeline</strong>
+          <span class="muted">Cards move left to right as status changes.</span>
+        </div>
+        <div class="panel-body">
+          <div class="pipeline" id="pipeline"></div>
+        </div>
+      </section>
+
+      <aside class="sidebar">
+        <section class="panel">
+          <div class="panel-head">
+            <strong id="formTitle">Create task</strong>
+            <span class="muted" id="authState">No token</span>
+          </div>
+          <div class="panel-body">
+            <label class="field">
+              <span>JWT token</span>
+              <textarea id="tokenInput" placeholder="Paste token or press Use demo token"></textarea>
+            </label>
+            <div class="row">
+              <button id="saveTokenBtn">Save token</button>
+              <button id="clearTokenBtn" class="danger">Clear token</button>
+            </div>
+
+            <hr class="divider" />
+
+            <label class="field">
+              <span>Title</span>
+              <input id="titleInput" type="text" placeholder="Ship onboarding checklist" />
+            </label>
+            <label class="field">
+              <span>Description</span>
+              <textarea id="descriptionInput" placeholder="What needs to be done"></textarea>
+            </label>
+            <label class="field">
+              <span>Status</span>
+              <select id="statusInput">
+                <option value="todo">todo</option>
+                <option value="in_progress">in_progress</option>
+                <option value="resolved">resolved</option>
+              </select>
+            </label>
+
+            <div class="row">
+              <button class="primary" id="submitTaskBtn">Create</button>
+              <button id="resetFormBtn">Reset</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <strong>AI actions</strong>
+            <span class="muted">Mock mode by default</span>
+          </div>
+          <div class="panel-body stack">
+            <div class="row">
+              <button class="good" id="highlightBtn">Highlight important</button>
+              <button class="good" id="summaryBtn">Summarize</button>
+            </div>
+            <div>
+              <div class="label">Summary</div>
+              <div class="result" id="summaryResult">No summary yet.</div>
+            </div>
+            <div>
+              <div class="label">Highlights</div>
+              <div class="result" id="highlightResult">No AI highlight yet.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <strong>Activity</strong>
+            <span class="muted" id="statusText">Idle</span>
+          </div>
+          <div class="panel-body">
+            <div class="result log" id="logArea">Ready.</div>
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+</body>
+</html>

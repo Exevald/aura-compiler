@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+enable_testing()
+
 include(FetchContent)
 FetchContent_Declare(
         googletest
@@ -18,13 +20,9 @@ add_subdirectory(tests)
 
 add_executable(
         aura-compiler
-        src/Compiler.cpp
         main.cpp
 )
 
 target_link_libraries(aura-compiler PRIVATE
-        bytecode_lib
-        ast_lib
-        parser_lib
-        vm_lib
+        compiler_lib
 )

@@ -1,9 +1,9 @@
 module samples.math_utils;
 
-fn sum(a: int, b: int) : int {
+export fn sum(a: int, b: int) : int {
     return a + b;
 }
 
-fn difference(a: int, b: int) : int {
+export fn difference(a: int, b: int) : int {
     return a - b;
 }

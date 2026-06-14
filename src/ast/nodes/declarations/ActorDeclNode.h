@@ -28,8 +28,8 @@ struct ActorMethodDecl
 	std::vector<Parameter> params;
 	std::vector<ContextBinding> contextRequirements;
 	std::vector<std::string> raisedEffects;
+	std::vector<std::unique_ptr<ContractNode>> contracts;
 	ASTNodePtr body;
-	std::vector<ASTNodePtr> metadata;
 
 	ActorMethodDecl(
 		const Kind methodKind,
@@ -38,6 +38,7 @@ struct ActorMethodDecl
 		std::vector<Parameter> methodParams,
 		std::vector<ContextBinding> contexts,
 		std::vector<std::string> effects,
+		std::vector<std::unique_ptr<ContractNode>> contractList,
 		ASTNodePtr methodBody)
 		: kind(methodKind)
 		, name(std::move(methodName))
@@ -45,6 +46,7 @@ struct ActorMethodDecl
 		, params(std::move(methodParams))
 		, contextRequirements(std::move(contexts))
 		, raisedEffects(std::move(effects))
+		, contracts(std::move(contractList))
 		, body(std::move(methodBody))
 	{
 	}

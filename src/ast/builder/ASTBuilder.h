@@ -16,10 +16,10 @@ private:
 	ASTNodePtr SimplifyArrowFunc(const RawNode& raw);
 	ASTNodePtr SimplifyBlockChain(RawNode& raw);
 	ASTNodePtr SimplifyExportDecl(RawNode& raw);
-	ASTNodePtr SimplifyStructDecl(RawNode& raw);
+	ASTNodePtr SimplifyStructDecl(const RawNode& raw);
 	static ASTNodePtr SimplifyEnumDecl(const RawNode& raw);
-	static ASTNodePtr SimplifyInterfaceDecl(const RawNode& raw);
-	static ASTNodePtr SimplifyEffectDecl(const RawNode& raw);
+	ASTNodePtr SimplifyInterfaceDecl(const RawNode& raw);
+	ASTNodePtr SimplifyEffectDecl(const RawNode& raw);
 	ASTNodePtr SimplifyActorDecl(const RawNode& raw);
 	ASTNodePtr SimplifyVarDeclNoSemi(const RawNode& raw);
 	ASTNodePtr SimplifyConstDeclNoSemi(RawNode& raw);
@@ -33,6 +33,7 @@ private:
 	ASTNodePtr SimplifyWhileStmt(RawNode& raw);
 	ASTNodePtr SimplifyIterStmt(RawNode& raw);
 	ASTNodePtr SimplifyArrayLit(const RawNode& raw);
+	ASTNodePtr SimplifyMapLit(RawNode& raw);
 	ASTNodePtr SimplifyPrimaryComptime(RawNode& raw);
 	ASTNodePtr SimplifyPrintStmt(RawNode& raw);
 	ASTNodePtr SimplifyUnary(RawNode& raw);
@@ -42,10 +43,11 @@ private:
 	StructMethodDecl SimplifyStructMethod(RawNode* raw);
 	ActorMethodDecl SimplifyActorMethod(RawNode* raw);
 
-	static void FlattenParams(const RawNode* raw, std::vector<Parameter>& target);
+	void FlattenParams(RawNode* raw, std::vector<Parameter>& target);
 	static void FlattenTypeParams(const RawNode* raw, std::vector<TypeParameterDecl>& target);
 	static void FlattenContextBindings(const RawNode* raw, std::vector<ContextBinding>& target);
 	static void FlattenRaisedEffects(const RawNode* raw, std::vector<std::string>& target);
+	void FlattenContracts(const RawNode* raw, std::vector<std::unique_ptr<ContractNode>>& target);
 	static void FlattenStructFields(const RawNode* raw, std::vector<StructField>& target);
 	void FlattenStructMembers(
 		const RawNode* raw,
@@ -56,7 +58,7 @@ private:
 		std::vector<ActorFieldDecl>& fields,
 		std::vector<ActorMethodDecl>& methods);
 	static void FlattenEnumVariants(const RawNode* raw, std::vector<EnumVariantDecl>& target);
-	static void FlattenInterfaceMethods(const RawNode* raw, std::vector<InterfaceMethodSig>& target);
+	void FlattenInterfaceMethods(RawNode* raw, std::vector<InterfaceMethodSig>& target);
 	static void FlattenQualifiedTypeList(const RawNode* raw, std::vector<std::string>& target);
 	void FlattenArgs(RawNode* raw, std::vector<ASTNodePtr>& target);
 	void FlattenIterAdapters(const RawNode* raw, std::vector<IterAdapter>& target);

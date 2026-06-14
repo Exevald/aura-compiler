@@ -1,0 +1,9 @@
+module samples.thread_local_storage;
+
+import std.io as io;
+
+thread_local var cache: int = 40;
+
+cache = cache + 2;
+
+io.println("cache =", cache);

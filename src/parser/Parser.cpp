@@ -1,5 +1,4 @@
 #include "Parser.h"
-
 #include "../ast/builder/ASTBuilder.h"
 #include "RemapToken.h"
 
@@ -58,13 +57,11 @@ bool SLRParser::Parse()
 	while (true)
 	{
 		int s = stateStack.top();
-		const std::string stringToken = remapToken::RemapTokenTypeToString(token);
-
-		if (m_tables->actionTable.contains(s) && m_tables->actionTable.at(s).contains(stringToken))
+		if (const std::string stringToken = remapToken::RemapTokenTypeToString(token);
+			m_tables->actionTable.contains(s) && m_tables->actionTable.at(s).contains(stringToken))
 		{
-			auto [type, value] = m_tables->actionTable.at(s).at(stringToken);
-
-			if (type == ActionType::SHIFT)
+			if (auto [type, value] = m_tables->actionTable.at(s).at(stringToken);
+				type == ActionType::SHIFT)
 			{
 				m_semanticStack.push(std::make_unique<LeafNode>(stringToken, token.value));
 				stateStack.push(value);

@@ -1,0 +1,27 @@
+module std.io;
+
+import std.io_native as native;
+
+export fn print(...values: any) : void {
+    native.print(values);
+};
+
+export fn println(...values: any) : void {
+    native.println(values);
+};
+
+export fn printf(format: string, ...values: any) : void {
+    native.printf(format, values);
+};
+
+export fn read() : string {
+    return native.read();
+};
+
+export fn readln() : string {
+    return native.readln();
+};
+
+export fn read_file(path: string) : string {
+    return native.read_file(path);
+};

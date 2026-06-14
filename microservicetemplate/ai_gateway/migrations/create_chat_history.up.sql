@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS chat_history (
+    id INTEGER PRIMARY KEY NOT NULL AUTO_INCREMENT,
+    message_role VARCHAR(50) NOT NULL,
+    content TEXT NOT NULL,
+    temperature REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

@@ -1,0 +1,85 @@
+module std.db.mysql;
+
+import std.mysql_native as native;
+
+export fn open(dsn: string) : std.mysql.Connection {
+    return native.open(dsn);
+};
+
+export fn open_pool(dsn: string, size: int) : std.mysql.Pool {
+    return native.open_pool(dsn, size);
+};
+
+export fn close(db_value: any) : bool {
+    return native.close(db_value);
+};
+
+export fn ping(db_value: any) : bool {
+    return native.ping(db_value);
+};
+
+export fn begin(connection: std.mysql.Connection) : bool {
+    return native.begin(connection);
+};
+
+export fn commit(connection: std.mysql.Connection) : bool {
+    return native.commit(connection);
+};
+
+export fn rollback(connection: std.mysql.Connection) : bool {
+    return native.rollback(connection);
+};
+
+export fn with_tx(db_handle, callback) {
+    return native.with_tx(db_handle, callback);
+};
+
+export fn query_one(db_handle: any, sql: string, params: [any]) : std.mysql.Row {
+    var stmt = native.prepare(db_handle, sql);
+    native.bind(stmt, params);
+    var result = native.execute(stmt);
+    var row = native.fetch_one(result);
+    native.close(stmt);
+    return row;
+};
+
+export fn query_all(db_handle: any, sql: string, params: [any]) : [std.mysql.Row] {
+    var stmt = native.prepare(db_handle, sql);
+    native.bind(stmt, params);
+    var result = native.execute(stmt);
+    var rows = native.fetch_all(result);
+    native.close(stmt);
+    return rows;
+};
+
+export fn exec_stmt(db_handle: any, sql: string, params: [any]) : std.mysql.Result {
+    var stmt = native.prepare(db_handle, sql);
+    native.bind(stmt, params);
+    var result = native.execute(stmt);
+    native.close(stmt);
+    return result;
+};
+
+export fn affected_rows(result: std.mysql.Result) : int {
+    return native.affected_rows(result);
+};
+
+export fn last_insert_id(result: std.mysql.Result) : int {
+    return native.last_insert_id(result);
+};
+
+export fn get(row: std.mysql.Row, column: string) : any {
+    return native.get(row, column);
+};
+
+export fn get_at(row: std.mysql.Row, index: int) : any {
+    return native.get_at(row, index);
+};
+
+export fn is_null(value: any) : bool {
+    return native.is_null(value);
+};
+
+export fn error(db_value: any) : string {
+    return native.error(db_value);
+};

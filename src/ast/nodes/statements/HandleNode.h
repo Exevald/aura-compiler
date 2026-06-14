@@ -10,11 +10,13 @@
 struct EffectHandlerCase
 {
 	std::string effectName;
+	std::string effectKey;
 	std::vector<Parameter> params;
 	ASTNodePtr body;
 
 	EffectHandlerCase(std::string name, std::vector<Parameter> handlerParams, ASTNodePtr handlerBody)
 		: effectName(std::move(name))
+		, effectKey()
 		, params(std::move(handlerParams))
 		, body(std::move(handlerBody))
 	{

@@ -1,0 +1,27 @@
+module std.channel;
+
+import std.channel_native as native;
+import std.option as option;
+
+export type Channel<T> = channel<T>;
+
+export fn make<T>(capacity: int) : Channel<T> {
+    return native.make(capacity);
+};
+
+export fn send<T>(channel_value: Channel<T>, value: T) : bool {
+    return native.send(channel_value, value);
+};
+
+export fn recv<T>(channel_value: Channel<T>) : option.Option<T> {
+    var outcome = native.recv(channel_value);
+    var ok: bool = outcome[0];
+    if (ok) {
+        return option.Some(outcome[1]);
+    }
+    return option.None();
+};
+
+export fn close<T>(channel_value: Channel<T>) : bool {
+    return native.close(channel_value);
+};

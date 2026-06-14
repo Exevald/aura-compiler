@@ -1,0 +1,31 @@
+module std.task;
+
+import std.task_native as native;
+import std.result as result;
+
+export type Task<T> = task<T>;
+
+export fn spawn(callee, ...args: any) {
+    return native.go_call(callee, args);
+};
+
+export fn join<T>(task_value: Task<T>) : T {
+    return native.join(task_value);
+};
+
+export fn cancel<T>(task_value: Task<T>) : bool {
+    return native.cancel(task_value);
+};
+
+export fn is_done<T>(task_value: Task<T>) : bool {
+    return native.is_done(task_value);
+};
+
+export fn join_result<T>(task_value: Task<T>) : result.Result<T, string> {
+    var outcome = native.join_result(task_value);
+    var ok: bool = outcome[0];
+    if (ok) {
+        return result.Ok(outcome[1]);
+    }
+    return result.Err(outcome[2]);
+};

@@ -10,11 +10,20 @@ inline constexpr int RuntimeError = -1;
 
 inline int Fail(ExecutionContext& context, const std::string& message)
 {
-	context.RaiseError(message);
+	if (context.HasFrames()
+		&& context.CurrentFrame().function
+		&& !context.CurrentFrame().function->name.empty())
+	{
+		context.RaiseError(message + " [in " + context.CurrentFrame().function->name + "]");
+	}
+	else
+	{
+		context.RaiseError(message);
+	}
 	return RuntimeError;
 }
 
-inline std::optional<std::string> ReadErrorMessage(ExecutionContext& context)
+inline std::optional<std::string> ReadErrorMessage(const ExecutionContext& context)
 {
 	if (!context.HasError())
 	{

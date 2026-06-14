@@ -1,0 +1,39 @@
+module microservicetemplate.internal.domain.model.task;
+
+import std.json as json;
+import std.option as option;
+
+struct Task {
+    id: int;
+    owner_user_id: string;
+    title: string;
+    description: string;
+    status: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export Task;
+
+fn task_json(value: Task) : string {
+    return json.object([
+        json.field("id", json.encode_number(value.id)),
+        json.field("title", json.encode_string(value.title)),
+        json.field("description", json.encode_string(value.description)),
+        json.field("status", json.encode_string(value.status)),
+        json.field("created_at", json.encode_string(value.created_at)),
+        json.field("updated_at", json.encode_string(value.updated_at))
+    ]);
+};
+
+export task_json;
+
+interface TaskRepository {
+    fn create(owner_user_id: string, title: string, description: string, status: string) : Task;
+    fn find_by_id_for_owner(id: int, owner_user_id: string) : option.Option<Task>;
+    fn list_for_owner(owner_user_id: string) : [Task];
+    fn update_for_owner(id: int, owner_user_id: string, title: string, description: string, status: string) : option.Option<Task>;
+    fn delete_for_owner(id: int, owner_user_id: string) : bool;
+}
+
+export TaskRepository;

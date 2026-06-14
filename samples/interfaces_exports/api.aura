@@ -1,0 +1,6 @@
+module samples.interfaces_exports.api;
+
+export type ReaderFactory<T> = T -> T;
+export fn make_ready(value: int) : int {
+    return value + 1;
+};

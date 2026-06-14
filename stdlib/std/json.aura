@@ -1,0 +1,93 @@
+module std.json;
+
+import std.array as arr;
+import std.json_native as native;
+import std.text as text;
+
+fn compact_field(field_value: string) : string {
+    var wrapped = text.concat("{", field_value);
+    wrapped = text.concat(wrapped, "}");
+    var compacted = native.compact(wrapped);
+    return text.slice(compacted, 1, text.len(compacted) - 2);
+};
+
+export fn is_valid(json_text: string) : bool {
+    return native.is_valid(json_text);
+};
+
+export fn compact(json_text: string) : string {
+    return native.compact(json_text);
+};
+
+export fn quote(value: string) : string {
+    return native.quote(value);
+};
+
+export fn encode_string(value: string) : string {
+    return quote(value);
+};
+
+export fn encode_number<T>(value: T) : string {
+    return native.encode_number(value);
+};
+
+export fn encode_bool(value: bool) : string {
+    if (value) {
+        return "true";
+    }
+    return "false";
+};
+
+export fn null_literal() : string {
+    return "null";
+};
+
+export fn field(key: string, value_json: string) : string
+requires (native.is_valid(value_json))
+{
+    return text.concat(text.concat(quote(key), ":"), native.compact(value_json));
+};
+
+export fn array(values: [string]) : string {
+    var out: string = "[";
+    var i: int = 0;
+    while (i < arr.len(values)) {
+        if (i != 0) {
+            out = text.concat(out, ",");
+        }
+        out = text.concat(out, native.compact(values[i]));
+        i = i + 1;
+    }
+    out = text.concat(out, "]");
+    return out;
+};
+
+export fn object(fields: [string]) : string {
+    var out: string = "{";
+    var i: int = 0;
+    while (i < arr.len(fields)) {
+        if (i != 0) {
+            out = text.concat(out, ",");
+        }
+        out = text.concat(out, compact_field(fields[i]));
+        i = i + 1;
+    }
+    out = text.concat(out, "}");
+    return out;
+};
+
+export fn get_string(object_json: string, key: string) : string {
+    return native.get_string(object_json, key);
+};
+
+export fn has_key(object_json: string, key: string) : bool {
+    return native.has_key(object_json, key);
+};
+
+export fn get_int(object_json: string, key: string) : int {
+    return native.get_int(object_json, key);
+};
+
+export fn get_bool(object_json: string, key: string) : bool {
+    return native.get_bool(object_json, key);
+};

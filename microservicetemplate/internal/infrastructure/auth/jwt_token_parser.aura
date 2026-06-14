@@ -1,0 +1,92 @@
+module microservicetemplate.internal.infrastructure.auth.jwt_token_parser;
+
+import std.array as array;
+import std.base64 as base64;
+import std.crypto as crypto;
+import std.json as json;
+import std.result as result;
+import std.text as text;
+import std.time as time;
+
+import microservicetemplate.internal.app.auth.token as appauth;
+
+fn unauthorized(message: string) : result.Result<appauth.UserToken, string> {
+    return result.Err("unauthorized:" + message);
+};
+
+fn decode_segment(segment: string) : [any] {
+    return base64.try_url_decode(segment);
+};
+
+struct JwtTokenParser implements appauth.TokenParser {
+    secret: string;
+
+    fn parse_bearer(auth_header: string) : result.Result<appauth.UserToken, string> {
+        if (!text.starts_with(auth_header, "Bearer ")) {
+            return unauthorized("missing bearer token");
+        }
+
+        var token = text.slice(auth_header, 7, text.len(auth_header) - 7);
+        if (token == "") {
+            return unauthorized("missing bearer token");
+        }
+
+        var parts = text.split(token, ".");
+        if (array.len(parts) != 3) {
+            return unauthorized("invalid token");
+        }
+        if (text.len(parts[0]) == 0 or text.len(parts[1]) == 0 or text.len(parts[2]) == 0) {
+            return unauthorized("invalid token");
+        }
+
+        var signing_input = parts[0] + "." + parts[1];
+        var expected_signature = crypto.hmac_sha256_base64url(secret, signing_input);
+        if (!crypto.constant_time_equal(expected_signature, parts[2])) {
+            return unauthorized("invalid token");
+        }
+
+        var header_json = decode_segment(parts[0]);
+        var header_ok: bool = header_json[0];
+        if (!header_ok or !json.is_valid(header_json[1])) {
+            return unauthorized("invalid token");
+        }
+
+        var payload_json = decode_segment(parts[1]);
+        var payload_ok: bool = payload_json[0];
+        if (!payload_ok or !json.is_valid(payload_json[1])) {
+            return unauthorized("invalid token");
+        }
+
+        if (!json.has_key(header_json[1], "alg") or !json.has_key(header_json[1], "typ")) {
+            return unauthorized("invalid token");
+        }
+        if (json.get_string(header_json[1], "alg") != "HS256" or json.get_string(header_json[1], "typ") != "JWT") {
+            return unauthorized("invalid token");
+        }
+
+        var now_seconds = time.now_millis() / 1000;
+        var has_exp = json.has_key(payload_json[1], "exp");
+        if (has_exp) {
+            if (now_seconds >= json.get_int(payload_json[1], "exp")) {
+                return unauthorized("token expired");
+            }
+        }
+        var has_nbf = json.has_key(payload_json[1], "nbf");
+        if (has_nbf) {
+            if (now_seconds < json.get_int(payload_json[1], "nbf")) {
+                return unauthorized("token expired");
+            }
+        }
+        if (!json.has_key(payload_json[1], "sub")) {
+            return unauthorized("invalid token");
+        }
+
+        var user_id = json.get_string(payload_json[1], "sub");
+        if (user_id == "") {
+            return unauthorized("invalid token");
+        }
+        return result.Ok(appauth.UserToken(user_id));
+    }
+}
+
+export JwtTokenParser;

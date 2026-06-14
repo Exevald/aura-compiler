@@ -2,6 +2,7 @@
 #include "common/VirtualMachineRuntimeSupport.h"
 
 #include <algorithm>
+#include <iostream>
 #include <mutex>
 #include <thread>
 #include <utility>
@@ -27,6 +28,7 @@ int VirtualMachine::HandleResolvedCall(
 	const uint16_t argCount,
 	const size_t calleeIdx)
 {
+	uint16_t effectiveArgCount = argCount;
 	Core::ClosurePtr closure;
 	Core::FunctionPtr func;
 
@@ -49,23 +51,84 @@ int VirtualMachine::HandleResolvedCall(
 			return Fail(m_context, "Can only call functions");
 		}
 
-		if ((!native->variadic && argCount != native->arity)
-			|| (native->variadic && argCount < native->arity))
+		if ((!native->variadic && effectiveArgCount != native->arity)
+			|| (native->variadic && effectiveArgCount < native->arity))
 		{
 			const std::string expected = native->variadic
-				? ("at least " + std::to_string(native->arity))
+				? "at least " + std::to_string(native->arity)
 				: std::to_string(native->arity);
 			return Fail(m_context, "Expected " + expected + " args");
 		}
 
-		std::vector<Value> args;
-		args.reserve(argCount);
-		for (size_t i = 0; i < argCount; ++i)
+		Value result;
+		bool usedFastPath = false;
+		if (!native->variadic)
 		{
-			args.push_back(m_context.GetAt(calleeIdx + 1 + i));
+			switch (effectiveArgCount)
+			{
+			case 0:
+				if (native->invoke0)
+				{
+					result = native->invoke0(m_context);
+					usedFastPath = true;
+				}
+				break;
+			case 1:
+				if (native->invoke1)
+				{
+					result = native->invoke1(m_context, m_context.GetAt(calleeIdx + 1));
+					usedFastPath = true;
+				}
+				break;
+			case 2:
+				if (native->invoke2)
+				{
+					result = native->invoke2(
+						m_context,
+						m_context.GetAt(calleeIdx + 1),
+						m_context.GetAt(calleeIdx + 2));
+					usedFastPath = true;
+				}
+				break;
+			case 3:
+				if (native->invoke3)
+				{
+					result = native->invoke3(
+						m_context,
+						m_context.GetAt(calleeIdx + 1),
+						m_context.GetAt(calleeIdx + 2),
+						m_context.GetAt(calleeIdx + 3));
+					usedFastPath = true;
+				}
+				break;
+			case 4:
+				if (native->invoke4)
+				{
+					result = native->invoke4(
+						m_context,
+						m_context.GetAt(calleeIdx + 1),
+						m_context.GetAt(calleeIdx + 2),
+						m_context.GetAt(calleeIdx + 3),
+						m_context.GetAt(calleeIdx + 4));
+					usedFastPath = true;
+				}
+				break;
+			default:
+				break;
+			}
 		}
 
-		const Value result = native->invoke(m_context, args);
+		if (!usedFastPath)
+		{
+			std::vector<Value> args;
+			args.reserve(effectiveArgCount);
+			for (size_t i = 0; i < effectiveArgCount; ++i)
+			{
+				args.push_back(m_context.GetAt(calleeIdx + 1 + i));
+			}
+
+			result = native->invoke(m_context, args);
+		}
 		if (m_context.HasError())
 		{
 			return RuntimeError;
@@ -89,12 +152,35 @@ int VirtualMachine::HandleResolvedCall(
 		return Fail(m_context, "Can only call functions");
 	}
 
-	if (argCount != func->arity)
+	if ((!func->variadic && effectiveArgCount != func->arity)
+		|| (func->variadic && effectiveArgCount < func->minArity))
 	{
-		return Fail(m_context, "Expected " + std::to_string(func->arity) + " args");
+		const std::string expected = func->variadic
+			? "at least " + std::to_string(func->minArity)
+			: std::to_string(func->arity);
+		return Fail(m_context, "Expected " + expected + " args");
 	}
 
-	const size_t newBase = m_context.StackSize() - argCount;
+	if (func->variadic)
+	{
+		const size_t fixedCount = static_cast<size_t>(func->arity - 1);
+		const size_t packCount = effectiveArgCount >= fixedCount ? effectiveArgCount - fixedCount : 0;
+		auto packed = std::make_shared<Core::Array>();
+		packed->elements.reserve(packCount);
+		for (size_t i = 0; i < packCount; ++i)
+		{
+			packed->elements.push_back(m_context.GetAt(calleeIdx + 1 + fixedCount + i));
+		}
+
+		while (m_context.StackSize() > calleeIdx + 1 + fixedCount)
+		{
+			m_context.PopValue();
+		}
+		m_context.PushValue(packed);
+		effectiveArgCount = static_cast<uint16_t>(func->arity);
+	}
+
+	const size_t newBase = m_context.StackSize() - effectiveArgCount;
 	m_context.PushFrame(func, closure, newBase);
 	return 0;
 }
@@ -125,7 +211,7 @@ int VirtualMachine::HandleReturn()
 int VirtualMachine::HandleGlobal(
 	const Core::OpCode opcode,
 	const uint16_t operand,
-	const std::vector<Core::Value>& constants)
+	const std::vector<Value>& constants)
 {
 	const auto name = ReadStringConstant(constants, operand, m_context);
 	if (!name)
@@ -135,12 +221,27 @@ int VirtualMachine::HandleGlobal(
 
 	if (opcode == Core::OpCode::OP_DEFINE_GLOBAL)
 	{
+		if (name->rfind("__thread_local.", 0) == 0)
+		{
+			m_context.DefineThreadLocalGlobal(*name, m_context.PopValue());
+			return 0;
+		}
 		m_context.DefineGlobal(*name, m_context.PopValue());
 		return 0;
 	}
 
 	if (opcode == Core::OpCode::OP_GET_GLOBAL)
 	{
+		if (name->rfind("__thread_local.", 0) == 0)
+		{
+			if (Value val; m_context.GetThreadLocalGlobal(*name, val))
+			{
+				m_context.PushValue(val);
+				return 0;
+			}
+			return Fail(m_context, "Undefined variable: " + *name);
+		}
+
 		Value val;
 		if (!m_context.GetGlobal(*name, val))
 		{
@@ -150,6 +251,15 @@ int VirtualMachine::HandleGlobal(
 		return 0;
 	}
 
+	if (name->rfind("__thread_local.", 0) == 0)
+	{
+		if (m_context.SetThreadLocalGlobal(*name, m_context.PeekValue(0)))
+		{
+			return 0;
+		}
+		return Fail(m_context, "Undefined variable: " + *name);
+	}
+
 	if (!m_context.SetGlobal(*name, m_context.PeekValue(0)))
 	{
 		return Fail(m_context, "Undefined variable: " + *name);
@@ -157,7 +267,7 @@ int VirtualMachine::HandleGlobal(
 	return 0;
 }
 
-int VirtualMachine::HandleClosure(const uint16_t operand, const std::vector<Core::Value>& constants)
+int VirtualMachine::HandleClosure(const uint16_t operand, const std::vector<Value>& constants)
 {
 	if (operand >= constants.size())
 	{
@@ -198,8 +308,8 @@ std::optional<std::string> VirtualMachine::InvokeCallable(
 		m_context.PushValue(arg);
 	}
 
-	const int callResult = HandleResolvedCall(callee, static_cast<uint16_t>(args.size()), stackBase);
-	if (callResult < 0)
+	if (const int callResult = HandleResolvedCall(callee, static_cast<uint16_t>(args.size()), stackBase);
+		callResult < 0)
 	{
 		const auto error = ReadErrorMessage(m_context);
 		m_context.UnwindAllTransactions();
@@ -225,6 +335,14 @@ std::optional<std::string> VirtualMachine::InvokeCallable(
 	return std::nullopt;
 }
 
+std::optional<std::string> VirtualMachine::RunCallable(
+	const Core::Value& callee,
+	const std::vector<Core::Value>& args,
+	Core::Value& result)
+{
+	return InvokeCallable(callee, args, result);
+}
+
 void VirtualMachine::StartActorWorker(const Core::ActorPtr& actor) const
 {
 	if (!actor)
@@ -233,7 +351,7 @@ void VirtualMachine::StartActorWorker(const Core::ActorPtr& actor) const
 	}
 
 	auto runtime = m_runtime;
-	actor->worker = std::thread([actor, runtime]() {
+	actor->worker = std::jthread([actor, runtime](std::stop_token) {
 		const VirtualMachine workerHost(std::move(runtime), false);
 		workerHost.RunActorWorker(actor);
 	});
@@ -246,7 +364,7 @@ void VirtualMachine::RunActorWorker(const Core::ActorPtr& actor) const
 		Core::Actor::MailboxItem item;
 		{
 			std::unique_lock lock(actor->mutex);
-			actor->cv.wait(lock, [&actor]() {
+			actor->cv.wait(lock, [&actor] {
 				return actor->stopping || !actor->mailbox.empty();
 			});
 
@@ -269,7 +387,8 @@ void VirtualMachine::RunActorWorker(const Core::ActorPtr& actor) const
 				std::shared_ptr<Core::Actor::QueryResult> pending;
 				{
 					std::lock_guard lock(actor->mutex);
-					if (const auto it = actor->pendingQueries.find(item.requestId); it != actor->pendingQueries.end())
+					if (const auto it = actor->pendingQueries.find(item.requestId);
+						it != actor->pendingQueries.end())
 					{
 						pending = it->second;
 					}
@@ -309,7 +428,8 @@ void VirtualMachine::RunActorWorker(const Core::ActorPtr& actor) const
 			std::shared_ptr<Core::Actor::QueryResult> pending;
 			{
 				std::lock_guard lock(actor->mutex);
-				if (const auto it = actor->pendingQueries.find(item.requestId); it != actor->pendingQueries.end())
+				if (const auto it = actor->pendingQueries.find(item.requestId);
+					it != actor->pendingQueries.end())
 				{
 					pending = it->second;
 				}
@@ -375,7 +495,7 @@ int VirtualMachine::EnqueueActorQuery(const Core::ActorPtr& actor, std::string m
 	actor->cv.notify_one();
 
 	std::unique_lock waitLock(pending->mutex);
-	pending->cv.wait(waitLock, [&pending]() {
+	pending->cv.wait(waitLock, [&pending] {
 		return pending->ready;
 	});
 	waitLock.unlock();

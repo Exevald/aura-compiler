@@ -1,0 +1,47 @@
+module std.text;
+
+import std.text_native as native;
+
+export fn len(text: string) : int {
+    return native.len(text);
+};
+
+export fn concat(left: string, right: string) : string {
+    return native.concat(left, right);
+};
+
+export fn contains(text: string, part: string) : bool {
+    return native.contains(text, part);
+};
+
+export fn starts_with(text: string, prefix: string) : bool {
+    return native.starts_with(text, prefix);
+};
+
+export fn index_of(text: string, part: string) : int {
+    return native.index_of(text, part);
+};
+
+export fn slice(text: string, start: int, end: int) : string {
+    return native.slice(text, start, end);
+};
+
+export fn split(text: string, separator: string) : [string] {
+    return native.split(text, separator);
+};
+
+export fn to_string(value: any) : string {
+    return native.to_string(value);
+};
+
+export fn to_int(value: any) : int {
+    return native.to_int(value);
+};
+
+export fn to_float(value: any) : float {
+    return native.to_float(value);
+};
+
+export fn to_bool(value: any) : bool {
+    return native.to_bool(value);
+};

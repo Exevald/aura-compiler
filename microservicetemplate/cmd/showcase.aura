@@ -1,0 +1,191 @@
+module microservicetemplate.cmd.showcase;
+
+import std.array as array;
+import std.channel as channel;
+import std.io as io;
+import std.map as maps;
+import std.task as task;
+
+const expected_answer: int = 42;
+shared var shared_total: int = 0;
+thread_local var local_total: int = 40;
+
+type Reducer<T> = (T, T) -> T;
+type IntList = [int];
+
+enum Outcome<T> {
+    Success(T) | Failure(string)
+}
+
+interface Reader<T> {
+    fn read() : T;
+}
+
+struct Box<T> implements Reader<T> {
+    value: T;
+
+    fn read() : T {
+        return self.value;
+    }
+}
+
+struct Positive {
+    value: int;
+} invariant (self.value > 0)
+
+actor Counter {
+    state value: int = 0;
+
+    msg add(amount: int) : void {
+        value = value + amount;
+    }
+
+    query get() : int {
+        return value;
+    }
+}
+
+effect Answer {
+    fn provide() : int;
+}
+
+comptime fn double(value: int) : int {
+    return value * 2;
+}
+
+fn add(left: int, right: int = 1) : int {
+    return left + right;
+}
+
+fn choose<T>(left: T, right: T, reducer: Reducer<T>) : T {
+    return reducer(left, right);
+}
+
+fn add_all(seed: int, ...values: int) : int {
+    var total = seed;
+    iter (value of values) {
+        total = total + value;
+    }
+    return total;
+}
+
+fn checked_divide(value: int, by: int) : int
+with { logger: string }
+requires (by != 0)
+ensures (result <= value)
+{
+    io.println(logger, "contract");
+    return value / by;
+}
+
+fn effect_value() : int raises { Answer } {
+    return provide();
+}
+
+fn async_add(left: int, right: int) : int {
+    return left + right;
+}
+
+fn increment(target: ref<int>) : void {
+    *target = *target + 1;
+}
+
+var folded: int = comptime {
+    return double(20) + 2;
+};
+
+var values: IntList = [1, 2, 3, 4, 5];
+var transformed: [int] = [];
+iter (value of values with [
+    drop(1),
+    take(3),
+    reverse,
+    filter(fn(item: int) -> item > 2),
+    transform(fn(item: int) -> item + 10)
+]) {
+    array.push(transformed, value);
+}
+
+var labels = map[string]int{
+    "answer": folded,
+    "items": array.len(transformed)
+};
+maps.keys(labels);
+maps.values(labels);
+
+var reducer: Reducer<int> = fn(left: int, right: int) -> {
+    if (left > right) {
+        return left;
+    }
+    return right;
+};
+var selected = choose(40, 42, reducer);
+var reader: Reader<int> = Box(selected);
+var outcome = Success(reader.read());
+
+var counter = Counter();
+counter.add(add(40));
+counter.add(1);
+
+transaction(shared shared_total) {
+    shared_total = shared_total + 40;
+    shared_total = shared_total + 2;
+}
+local_total = local_total + 2;
+
+var resumed = 0;
+handle effect_value() with {
+    effect provide() -> {
+        resume(expected_answer);
+    }
+}
+resumed = expected_answer;
+
+var concurrent = go async_add(19, 23);
+var awaited = await concurrent;
+var spawned = task.spawn(async_add, 20, 22);
+var joined = task.join(spawned);
+
+var messages: channel.Channel<int> = channel.make(1);
+channel.send(messages, expected_answer);
+var received = channel.recv(messages);
+channel.close(messages);
+
+var logger = "showcase";
+var contracted = checked_divide(expected_answer, 1);
+var positive = Positive(contracted);
+var variadic_total = add_all(39, 1, 2);
+
+unsafe {
+    var pointer_value = 41;
+    var pointer: ptr<int> = &pointer_value;
+    increment(pointer_value);
+    *pointer = *pointer;
+    io.println("unsafe", pointer_value);
+}
+
+var while_count = 0;
+while (while_count < 2) {
+    while_count = while_count + 1;
+}
+
+if (folded == expected_answer
+    and selected == expected_answer
+    and outcome.tag == 0
+    and outcome[0] == expected_answer
+    and counter.get() == expected_answer
+    and shared_total == expected_answer
+    and local_total == expected_answer
+    and resumed == expected_answer
+    and awaited == expected_answer
+    and joined == expected_answer
+    and received.tag == 0
+    and received[0] == expected_answer
+    and labels["answer"] == expected_answer
+    and positive.value == expected_answer
+    and variadic_total == expected_answer
+    and while_count == 2) {
+    io.println("AURA_SHOWCASE_OK", expected_answer);
+} else {
+    io.println("AURA_SHOWCASE_FAILED");
+}

@@ -1,4 +1,6 @@
+#include "../../ast/common/SemanticAnalyzerSupport.h"
 #include "../../ast/sematic/SemanticAnalyzer.h"
+#include "../../vm/execution/VirtualMachine.h"
 #include "../BytecodeGenerator.h"
 
 #include <algorithm>
@@ -40,6 +42,8 @@ bool ShouldPopStatementResult(const ASTNode* node)
 	return dynamic_cast<const BinaryExprNode*>(node)
 		|| dynamic_cast<const AssignmentNode*>(node)
 		|| dynamic_cast<const CallNode*>(node)
+		|| dynamic_cast<const GoExprNode*>(node)
+		|| dynamic_cast<const AwaitExprNode*>(node)
 		|| dynamic_cast<const IndexNode*>(node)
 		|| dynamic_cast<const IdentifierNode*>(node)
 		|| dynamic_cast<const UnaryExprNode*>(node)
@@ -48,7 +52,8 @@ bool ShouldPopStatementResult(const ASTNode* node)
 		|| dynamic_cast<const StringLiteralNode*>(node)
 		|| dynamic_cast<const FunctionExprNode*>(node)
 		|| dynamic_cast<const MemberAccessNode*>(node)
-		|| dynamic_cast<const ArrayLiteralNode*>(node);
+		|| dynamic_cast<const ArrayLiteralNode*>(node)
+		|| dynamic_cast<const MapLiteralNode*>(node);
 }
 
 } // namespace
@@ -62,6 +67,8 @@ VM::Execution::Chunk BytecodeGenerator::Compile(ASTNode* root)
 	m_metadata.Clear();
 	m_currentModule.clear();
 	m_lambdaCounter = 0;
+	m_comptimeFunctions.clear();
+	m_comptimeBindings.clear();
 
 	FunctionContext context;
 	context.function = std::make_shared<Function>();
@@ -155,6 +162,180 @@ std::string BytecodeGenerator::QualifyName(const std::string& name) const
 	return name;
 }
 
+std::string BytecodeGenerator::NormalizeImportedTypeName(
+	const std::unordered_map<std::string, std::string>& importAliases,
+	const std::string& typeName)
+{
+	std::string baseName;
+	std::vector<std::string> typeArgs;
+	if (SemanticAnalyzerDetail::SplitGenericName(typeName, baseName, typeArgs))
+	{
+		std::string result = NormalizeImportedTypeName(importAliases, baseName) + "<";
+		for (size_t i = 0; i < typeArgs.size(); ++i)
+		{
+			if (i > 0)
+			{
+				result += ",";
+			}
+			result += NormalizeImportedTypeName(importAliases, typeArgs[i]);
+		}
+		result += ">";
+		return result;
+	}
+
+	const auto dot = typeName.find('.');
+	if (dot == std::string::npos)
+	{
+		return typeName;
+	}
+	if (const auto aliasIt = importAliases.find(typeName.substr(0, dot)); aliasIt != importAliases.end())
+	{
+		return aliasIt->second + typeName.substr(dot);
+	}
+	return typeName;
+}
+
+std::optional<std::string> BytecodeGenerator::EnsureStructMetadata(const std::string& typeName)
+{
+	if (typeName.empty() || typeName == "auto")
+	{
+		return std::nullopt;
+	}
+
+	const std::string normalizedType = NormalizeImportedTypeName(m_metadata.importAliases, typeName);
+	const std::string qualifiedType = QualifyName(normalizedType);
+	if (m_metadata.structLayouts.contains(qualifiedType))
+	{
+		return qualifiedType;
+	}
+	if (m_metadata.structLayouts.contains(normalizedType))
+	{
+		return normalizedType;
+	}
+
+	std::string baseName;
+	std::vector<std::string> typeArgs;
+	if (!SemanticAnalyzerDetail::SplitGenericName(qualifiedType, baseName, typeArgs))
+	{
+		return std::nullopt;
+	}
+	if (!m_metadata.structLayouts.contains(baseName))
+	{
+		return std::nullopt;
+	}
+
+	const auto paramsIt = m_metadata.structTypeParams.find(baseName);
+	if (paramsIt == m_metadata.structTypeParams.end() || paramsIt->second.size() != typeArgs.size())
+	{
+		return std::nullopt;
+	}
+
+	std::unordered_map<std::string, std::string> replacements;
+	for (size_t i = 0; i < typeArgs.size(); ++i)
+	{
+		replacements[paramsIt->second[i]] = typeArgs[i];
+	}
+
+	m_metadata.structLayouts[qualifiedType] = m_metadata.structLayouts.at(baseName);
+	m_metadata.structTypeParams[qualifiedType] = paramsIt->second;
+	m_metadata.structMethodNames[qualifiedType] = m_metadata.structMethodNames.at(baseName);
+	if (const auto invariantIt = m_metadata.structInvariantChecks.find(baseName);
+		invariantIt != m_metadata.structInvariantChecks.end())
+	{
+		m_metadata.structInvariantChecks[qualifiedType] = invariantIt->second;
+	}
+
+	auto& concreteFields = m_metadata.structFieldTypes[qualifiedType];
+	concreteFields.clear();
+	for (const auto& [fieldName, fieldType] : m_metadata.structFieldTypes.at(baseName))
+	{
+		concreteFields[fieldName] = SemanticAnalyzerDetail::SubstituteTypeString(fieldType, replacements);
+	}
+
+	return qualifiedType;
+}
+
+std::optional<std::string> BytecodeGenerator::EnsureActorMetadata(const std::string& typeName)
+{
+	if (typeName.empty() || typeName == "auto")
+	{
+		return std::nullopt;
+	}
+
+	const std::string normalizedType = NormalizeImportedTypeName(m_metadata.importAliases, typeName);
+	const std::string qualifiedType = QualifyName(normalizedType);
+	if (m_metadata.actorLayouts.contains(qualifiedType))
+	{
+		return qualifiedType;
+	}
+	if (m_metadata.actorLayouts.contains(normalizedType))
+	{
+		return normalizedType;
+	}
+
+	std::string baseName;
+	std::vector<std::string> typeArgs;
+	if (!SemanticAnalyzerDetail::SplitGenericName(qualifiedType, baseName, typeArgs))
+	{
+		return std::nullopt;
+	}
+	if (!m_metadata.actorLayouts.contains(baseName))
+	{
+		return std::nullopt;
+	}
+
+	m_metadata.actorLayouts[qualifiedType] = m_metadata.actorLayouts.at(baseName);
+	if (const auto defaultsIt = m_metadata.actorFieldDefaults.find(baseName);
+		defaultsIt != m_metadata.actorFieldDefaults.end())
+	{
+		m_metadata.actorFieldDefaults[qualifiedType] = defaultsIt->second;
+	}
+	if (const auto methodsIt = m_metadata.actorMethodNames.find(baseName);
+		methodsIt != m_metadata.actorMethodNames.end())
+	{
+		m_metadata.actorMethodNames[qualifiedType] = methodsIt->second;
+	}
+	if (const auto queryIt = m_metadata.actorMethodIsQuery.find(baseName);
+		queryIt != m_metadata.actorMethodIsQuery.end())
+	{
+		m_metadata.actorMethodIsQuery[qualifiedType] = queryIt->second;
+	}
+	return qualifiedType;
+}
+
+std::optional<std::string> BytecodeGenerator::EnsureInterfaceMetadata(const std::string& typeName)
+{
+	if (typeName.empty() || typeName == "auto")
+	{
+		return std::nullopt;
+	}
+
+	const std::string normalizedType = NormalizeImportedTypeName(m_metadata.importAliases, typeName);
+	const std::string qualifiedType = QualifyName(normalizedType);
+	if (m_metadata.interfaceMethods.contains(qualifiedType))
+	{
+		return qualifiedType;
+	}
+	if (m_metadata.interfaceMethods.contains(normalizedType))
+	{
+		return normalizedType;
+	}
+
+	std::string baseName;
+	std::vector<std::string> typeArgs;
+	if (!SemanticAnalyzerDetail::SplitGenericName(qualifiedType, baseName, typeArgs))
+	{
+		return std::nullopt;
+	}
+	if (!m_metadata.interfaceMethods.contains(baseName))
+	{
+		return std::nullopt;
+	}
+
+	m_metadata.interfaceMethods[qualifiedType] = m_metadata.interfaceMethods.at(baseName);
+	return qualifiedType;
+}
+
 std::optional<uint8_t> BytecodeGenerator::ResolveLocal(const std::string& name) const
 {
 	return CurrentContext().symbols.Resolve(name);
@@ -168,6 +349,15 @@ std::optional<uint8_t> BytecodeGenerator::ResolveUpvalue(size_t contextIndex, co
 	}
 
 	auto& parent = m_contexts[contextIndex - 1];
+	if (contextIndex == 1
+		&& !m_currentModule.empty()
+		&& !m_metadata.importAliases.contains(name))
+	{
+		// Module-level bindings live in SharedRuntime. Capturing their top-level
+		// local slots would give each function an independent value snapshot.
+		// Import aliases remain lexical module objects used for member lookup.
+		return std::nullopt;
+	}
 	if (const auto local = parent.symbols.Resolve(name))
 	{
 		auto& current = m_contexts[contextIndex];
@@ -203,6 +393,14 @@ std::optional<uint8_t> BytecodeGenerator::ResolveUpvalue(size_t contextIndex, co
 
 void BytecodeGenerator::EmitGetVariable(const std::string& name)
 {
+	if (name == "result"
+		&& !m_activeContractResultSlots.empty()
+		&& m_activeContractResultSlots.back().has_value())
+	{
+		CurrentChunk().Write(OpCode::OP_GET_LOCAL);
+		CurrentChunk().code.push_back(*m_activeContractResultSlots.back());
+		return;
+	}
 	if (const auto local = ResolveLocal(name))
 	{
 		CurrentChunk().Write(OpCode::OP_GET_LOCAL);
@@ -229,10 +427,15 @@ void BytecodeGenerator::EmitGetVariable(const std::string& name)
 		return;
 	}
 
-	const uint8_t nameIndex = CurrentChunk().AddConstant(
-		std::make_shared<const std::string>(QualifyName(name)));
+	std::string globalName = QualifyName(name);
+	if (m_metadata.threadLocalGlobals.contains(globalName))
+	{
+		globalName = "__thread_local." + globalName;
+	}
+	const uint16_t nameIndex = CurrentChunk().AddConstant(
+		std::make_shared<const std::string>(globalName));
 	CurrentChunk().Write(OpCode::OP_GET_GLOBAL);
-	CurrentChunk().code.push_back(nameIndex);
+	CurrentChunk().WriteOperand(OpCode::OP_GET_GLOBAL, nameIndex);
 }
 
 void BytecodeGenerator::EmitSetVariable(const std::string& name)
@@ -263,10 +466,15 @@ void BytecodeGenerator::EmitSetVariable(const std::string& name)
 		return;
 	}
 
-	const uint8_t nameIndex = CurrentChunk().AddConstant(
-		std::make_shared<const std::string>(QualifyName(name)));
+	std::string globalName = QualifyName(name);
+	if (m_metadata.threadLocalGlobals.contains(globalName))
+	{
+		globalName = "__thread_local." + globalName;
+	}
+	const uint16_t nameIndex = CurrentChunk().AddConstant(
+		std::make_shared<const std::string>(globalName));
 	CurrentChunk().Write(OpCode::OP_SET_GLOBAL);
-	CurrentChunk().code.push_back(nameIndex);
+	CurrentChunk().WriteOperand(OpCode::OP_SET_GLOBAL, nameIndex);
 }
 
 std::optional<uint8_t> BytecodeGenerator::ResolveSelfFieldIndex(const std::string& member) const
@@ -327,10 +535,10 @@ void BytecodeGenerator::EmitAddressOf(ASTNode* operand)
 			return;
 		}
 
-		const uint8_t nameIndex = CurrentChunk().AddConstant(
+		const uint16_t nameIndex = CurrentChunk().AddConstant(
 			std::make_shared<const std::string>(QualifyName(identifier->name)));
 		CurrentChunk().Write(OpCode::OP_ADDR_GLOBAL);
-		CurrentChunk().code.push_back(nameIndex);
+		CurrentChunk().WriteOperand(OpCode::OP_ADDR_GLOBAL, nameIndex);
 		return;
 	}
 
@@ -369,14 +577,47 @@ void BytecodeGenerator::EmitCallArgument(ASTNode* arg, const bool byRef)
 	arg->Accept(*this);
 }
 
-void BytecodeGenerator::RegisterFunctionSignature(const std::string& name, const std::vector<Parameter>& params)
+void BytecodeGenerator::EmitContractAssertion(const std::string& message)
+{
+	const uint16_t messageIndex = CurrentChunk().AddConstant(
+		std::make_shared<const std::string>(message));
+	CurrentChunk().Write(OpCode::OP_ASSERT);
+	CurrentChunk().WriteOperand(OpCode::OP_ASSERT, messageIndex);
+}
+
+void BytecodeGenerator::RegisterFunctionSignature(
+	const std::string& name,
+	const std::vector<Parameter>& params,
+	const std::vector<ContextBinding>& contextRequirements,
+	const std::string& returnTypeName)
 {
 	auto& signature = m_metadata.functionSignatures[name];
 	signature.refParams.clear();
+	signature.defaultArgs.clear();
+	signature.contextParams.clear();
+	signature.returnTypeName = NormalizeImportedTypeName(m_metadata.importAliases, returnTypeName);
 	signature.refParams.reserve(params.size());
+	signature.defaultArgs.reserve(params.size());
+	signature.contextParams.reserve(contextRequirements.size());
+	signature.requiredArity = 0;
+	signature.variadic = false;
+	for (const auto& context : contextRequirements)
+	{
+		signature.contextParams.push_back(context.name);
+	}
 	for (const auto& param : params)
 	{
+		if (param.isVariadic)
+		{
+			signature.variadic = true;
+			continue;
+		}
 		signature.refParams.push_back(param.typeName.rfind("ref<", 0) == 0);
+		signature.defaultArgs.push_back(param.defaultValue.get());
+		if (!param.hasDefaultValue)
+		{
+			++signature.requiredArity;
+		}
 	}
 }
 
@@ -414,7 +655,7 @@ void BytecodeGenerator::EmitFunctionObject(
 	const std::shared_ptr<Function>& function,
 	const std::vector<UpvalueInfo>& upvalues) const
 {
-	const uint8_t functionIndex = CurrentChunk().AddConstant(function);
+	const uint16_t functionIndex = CurrentChunk().AddConstant(function);
 	for (const auto& upvalue : upvalues)
 	{
 		if (upvalue.sourceIsLocal)
@@ -428,49 +669,90 @@ void BytecodeGenerator::EmitFunctionObject(
 		CurrentChunk().code.push_back(upvalue.sourceIndex);
 	}
 	CurrentChunk().Write(OpCode::OP_CLOSURE);
-	CurrentChunk().code.push_back(functionIndex);
+	CurrentChunk().WriteOperand(OpCode::OP_CLOSURE, functionIndex);
 }
 
 void BytecodeGenerator::CompileFunctionBody(
 	const std::string& name,
 	const std::vector<Parameter>& params,
+	const std::vector<ContextBinding>& contextRequirements,
+	const std::vector<std::string>& raisedEffects,
+	const std::vector<ContractNode*>& contracts,
 	ASTNode* body,
-	const std::function<void()>& emitResult)
+	const std::function<void()>& emitResult,
+	const bool isEffectHandler)
 {
 	FunctionContext context;
 	InitializeFunctionContext(context, name);
-
-	for (const auto& [_, typeName] : params)
+	context.isEffectHandler = isEffectHandler;
+	std::optional<uint8_t> contractResultSlot = std::nullopt;
+	size_t minArity = 0;
+	for (const auto& param : params)
 	{
-		context.symbols.Define(_);
+		if (!param.isVariadic && !param.hasDefaultValue)
+		{
+			++minArity;
+		}
+	}
+
+	for (const auto& contextRequirement : contextRequirements)
+	{
+		context.symbols.Define(contextRequirement.name);
 		context.function->arity++;
-		if (m_metadata.structLayouts.contains(QualifyName(typeName)))
+	}
+
+	for (const auto& param : params)
+	{
+		context.symbols.Define(param.name);
+		context.function->arity++;
+		if (const auto structType = EnsureStructMetadata(param.typeName))
 		{
-			context.structVarScopes.back()[_] = QualifyName(typeName);
+			context.structVarScopes.back()[param.name] = *structType;
 		}
-		else if (m_metadata.structLayouts.contains(typeName))
+		if (const auto interfaceType = EnsureInterfaceMetadata(param.typeName))
 		{
-			context.structVarScopes.back()[_] = typeName;
-		}
-		if (m_metadata.interfaceMethods.contains(QualifyName(typeName)))
-		{
-			context.interfaceVarScopes.back()[_] = FunctionContext::InterfaceBinding{
-				QualifyName(typeName),
-				"",
-				FunctionContext::InterfaceBinding::RuntimeKind::Unknown
-			};
-		}
-		else if (m_metadata.interfaceMethods.contains(typeName))
-		{
-			context.interfaceVarScopes.back()[_] = FunctionContext::InterfaceBinding{
-				typeName,
+			context.interfaceVarScopes.back()[param.name] = FunctionContext::InterfaceBinding{
+				*interfaceType,
 				"",
 				FunctionContext::InterfaceBinding::RuntimeKind::Unknown
 			};
 		}
 	}
+	context.function->minArity = static_cast<int>(minArity);
+	context.function->variadic = std::ranges::any_of(params, [](const Parameter& param) { return param.isVariadic; });
 
 	m_contexts.push_back(std::move(context));
+	m_activeFunctionContracts.push_back(contracts);
+	m_activeRaisedEffects.emplace_back();
+	for (const auto& effectName : raisedEffects)
+	{
+		m_activeRaisedEffects.back().insert(QualifyName(effectName));
+	}
+	if (std::ranges::any_of(contracts, [](const ContractNode* contract) {
+			return contract && contract->kind == ContractKind::Ensures;
+		}))
+	{
+		const uint8_t slot = CurrentContext().symbols.Define("__contract_result");
+		CurrentChunk().WriteConstant(std::monostate{});
+		CurrentChunk().Write(OpCode::OP_SET_LOCAL);
+		CurrentChunk().code.push_back(slot);
+		contractResultSlot = slot;
+	}
+	m_activeContractResultSlots.push_back(contractResultSlot);
+	ScopeExit contractScope([this]() {
+		m_activeContractResultSlots.pop_back();
+		m_activeFunctionContracts.pop_back();
+		m_activeRaisedEffects.pop_back();
+	});
+	for (const auto* contract : contracts)
+	{
+		if (!contract || contract->kind != ContractKind::Requires || !contract->expression)
+		{
+			continue;
+		}
+		contract->expression->Accept(*this);
+		EmitContractAssertion("Contract requires failed in " + name);
+	}
 	if (body)
 	{
 		body->Accept(*this);
@@ -490,4 +772,114 @@ std::string BytecodeGenerator::DefaultImportAlias(const std::string& qualifiedNa
 {
 	const auto pos = qualifiedName.find_last_of('.');
 	return (pos == std::string::npos) ? qualifiedName : qualifiedName.substr(pos + 1);
+}
+
+void BytecodeGenerator::RegisterComptimeFunctionsForChunk(
+	VM::Execution::Chunk& chunk,
+	const std::unordered_map<std::string, VM::Core::Value>& importedAliases)
+{
+	for (const auto& [alias, value] : importedAliases)
+	{
+		chunk.WriteConstant(value);
+		const uint8_t localIndex = CurrentContext().symbols.Define(alias);
+		chunk.Write(OpCode::OP_SET_LOCAL);
+		chunk.code.push_back(localIndex);
+	}
+
+	std::unordered_set<const FunctionDeclNode*> uniqueFunctions;
+	for (const auto& [_, function] : m_comptimeFunctions)
+	{
+		if (function)
+		{
+			uniqueFunctions.insert(function);
+		}
+	}
+
+	for (const auto* function : uniqueFunctions)
+	{
+		const std::string exportedName = QualifyName(function->name);
+		RegisterFunctionSignature(exportedName, function->params, function->contextRequirements, function->returnType);
+		std::vector<ContractNode*> contracts;
+		for (const auto& contract : function->contracts)
+		{
+			contracts.push_back(contract.get());
+		}
+		CompileFunctionBody(
+			exportedName,
+			function->params,
+			function->contextRequirements,
+			function->raisedEffects,
+			contracts,
+			function->body.get(),
+			[this, &exportedName]() {
+				const uint16_t nameIndex = CurrentChunk().AddConstant(
+					std::make_shared<const std::string>(exportedName));
+				CurrentChunk().Write(OpCode::OP_DEFINE_GLOBAL);
+				CurrentChunk().WriteOperand(OpCode::OP_DEFINE_GLOBAL, nameIndex);
+			});
+	}
+}
+
+Value BytecodeGenerator::EvaluateComptime(ASTNode* node)
+{
+	if (!node)
+	{
+		return std::monostate{};
+	}
+
+	const auto savedContexts = std::move(m_contexts);
+	const auto savedContracts = std::move(m_activeFunctionContracts);
+	const auto savedContractResultSlots = std::move(m_activeContractResultSlots);
+	const auto savedRaisedEffects = std::move(m_activeRaisedEffects);
+	const auto savedHandledEffects = std::move(m_activeHandledEffects);
+
+	FunctionContext topLevel;
+	topLevel.function = std::make_shared<Function>();
+	topLevel.function->name = "<comptime_top_level>";
+	topLevel.symbols.Reset();
+	topLevel.structVarScopes.emplace_back();
+	topLevel.enumVarScopes.emplace_back();
+	topLevel.actorVarScopes.emplace_back();
+	topLevel.interfaceVarScopes.emplace_back();
+	m_contexts.clear();
+	m_contexts.push_back(std::move(topLevel));
+
+	std::unordered_map<std::string, VM::Core::Value> importedAliases;
+	for (const auto& [alias, moduleName] : m_metadata.importAliases)
+	{
+		auto module = std::make_shared<VM::Core::Module>();
+		module->name = moduleName;
+		importedAliases.emplace(alias, module);
+	}
+
+	RegisterComptimeFunctionsForChunk(CurrentChunk(), importedAliases);
+	CompileFunctionBody("<comptime_eval>", {}, {}, {}, {}, node, []() {});
+	CurrentChunk().Write(OpCode::OP_CALL);
+	CurrentChunk().code.push_back(0);
+	CurrentChunk().Write(OpCode::OP_RETURN);
+
+	VM::Execution::VirtualMachine vm(std::make_shared<VM::Runtime::SharedRuntime>(), true);
+	if (!vm.Interpret(CurrentContext().function->chunk.get()))
+	{
+		const std::string error = std::string(vm.GetContext().GetError());
+		m_contexts = savedContexts;
+		m_activeFunctionContracts = savedContracts;
+		m_activeContractResultSlots = savedContractResultSlots;
+		m_activeRaisedEffects = savedRaisedEffects;
+		m_activeHandledEffects = savedHandledEffects;
+		throw std::runtime_error(error.empty() ? "comptime execution failed" : error);
+	}
+
+	Value result = std::monostate{};
+	if (!vm.GetContext().StackEmpty())
+	{
+		result = vm.GetContext().PeekValue(0);
+	}
+
+	m_contexts = savedContexts;
+	m_activeFunctionContracts = savedContracts;
+	m_activeContractResultSlots = savedContractResultSlots;
+	m_activeRaisedEffects = savedRaisedEffects;
+	m_activeHandledEffects = savedHandledEffects;
+	return result;
 }

@@ -1,0 +1,13 @@
+module samples.example_conditions;
+
+import std.io as io;
+
+var i: bool = false;
+var a: int = 10;
+var b: float = 20;
+if ((a+b) > 10) {
+    io.println("a+b*2:", a+b*2);
+}
+
+var str: string = "12";
+io.println(str, 5);

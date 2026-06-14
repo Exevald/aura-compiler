@@ -1,0 +1,100 @@
+module std.outbox;
+
+import std.core as core;
+import std.db.mysql as db;
+import std.json as json;
+import std.mq.rabbitmq as mq;
+import std.text as text;
+import std.time as time;
+
+fn schema_sql() : string {
+    return "create table if not exists aura_outbox (id bigint primary key auto_increment, topic varchar(255) not null, routing_key varchar(255) not null, payload longtext not null, status varchar(16) not null, attempts int not null default 0, last_error text null, created_at timestamp not null default current_timestamp, sent_at timestamp null default null, index idx_aura_outbox_status_id(status, id))";
+};
+
+fn select_batch_sql(batch_size: int) : string {
+    return text.concat(
+        "select id, topic, routing_key, payload, status, attempts from aura_outbox where status in ('pending', 'failed') order by id asc limit ",
+        text.to_string(batch_size));
+};
+
+fn relay_target_queue(topic: string, routing_key: string) : string {
+    if (routing_key == "") {
+        return topic;
+    }
+    return routing_key;
+};
+
+fn mark_sent(conn: std.mysql.Connection, id: int) : bool {
+    var result = db.exec_stmt(
+        conn,
+        "update aura_outbox set status = ?, last_error = ?, sent_at = current_timestamp where id = ?",
+        ["sent", "", id]);
+    return db.affected_rows(result) > 0;
+};
+
+export fn ensure_schema(conn: std.mysql.Connection) : bool {
+    var result = db.exec_stmt(conn, schema_sql(), []);
+    return db.affected_rows(result) >= 0;
+};
+
+export fn enqueue_text(conn: std.mysql.Connection, topic: string, routing_key: string, payload: string) : int {
+    var result = db.exec_stmt(
+        conn,
+        "insert into aura_outbox(topic, routing_key, payload, status, attempts, last_error, sent_at) values(?, ?, ?, ?, ?, ?, ?)",
+        [topic, routing_key, payload, "pending", 0, "", null]);
+    return db.last_insert_id(result);
+};
+
+export fn enqueue_json(conn: std.mysql.Connection, topic: string, routing_key: string, payload_json: string) : int
+requires (json.is_valid(payload_json))
+{
+    return enqueue_text(conn, topic, routing_key, json.compact(payload_json));
+};
+
+export fn with_tx(conn: std.mysql.Connection, callback) {
+    return db.with_tx(conn, callback);
+};
+
+export fn mark_failed(conn: std.mysql.Connection, id: int, error: string) : bool {
+    var result = db.exec_stmt(
+        conn,
+        "update aura_outbox set status = ?, attempts = attempts + 1, last_error = ?, sent_at = ? where id = ?",
+        ["failed", error, null, id]);
+    return db.affected_rows(result) > 0;
+};
+
+export fn run_rabbitmq_relay(conn: std.mysql.Connection, rabbit: std.mq.rabbitmq.Connection, batch_size: int) : int {
+    var delivered: int = 0;
+    var rows = db.query_all(conn, select_batch_sql(batch_size), []);
+    var index: int = 0;
+    while (index < core.len(rows)) {
+        var row = rows[index];
+        var id = text.to_int(db.get(row, "id"));
+        var topic = text.to_string(db.get(row, "topic"));
+        var routing_key = text.to_string(db.get(row, "routing_key"));
+        var payload = text.to_string(db.get(row, "payload"));
+        var queue = relay_target_queue(topic, routing_key);
+        if (mq.publish(rabbit, queue, payload)) {
+            if (mark_sent(conn, id)) {
+                delivered = delivered + 1;
+            }
+        } else {
+            var publish_error = mq.error(rabbit);
+            if (publish_error == "") {
+                publish_error = "rabbitmq publish failed";
+            }
+            mark_failed(conn, id, publish_error);
+        }
+        index = index + 1;
+    }
+    return delivered;
+};
+
+export fn run_rabbitmq_relay_forever(conn: std.mysql.Connection, rabbit: std.mq.rabbitmq.Connection, batch_size: int, idle_delay_ms: int) : void {
+    while (true) {
+        var delivered = run_rabbitmq_relay(conn, rabbit, batch_size);
+        if (delivered == 0) {
+            time.sleep(idle_delay_ms);
+        }
+    }
+};

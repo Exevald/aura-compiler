@@ -1,0 +1,27 @@
+module samples.rabbitmq_work_queue;
+
+import std.io as io;
+import std.json as json;
+import std.mq.rabbitmq as mq;
+import std.uuid as uuid;
+
+var conn = mq.open("amqp://guest:guest@127.0.0.1:5672/");
+var queue = "jobs";
+io.println("connect_error", mq.error(conn));
+
+fn process_message(message) : void {
+    var payload = mq.body(message);
+    io.println("routing_key", mq.routing_key(message));
+    io.println("job_id", json.get_string(payload, "job_id"));
+    io.println("kind", json.get_string(payload, "kind"));
+    io.println("ack", mq.ack(message));
+    io.println("close", mq.close(conn));
+};
+
+var job_id = uuid.new_v4();
+print mq.declare_queue(conn, queue);
+print mq.publish_json(conn, queue, json.object([
+    json.field("job_id", json.encode_string(job_id)),
+    json.field("kind", json.encode_string("email"))
+]));
+mq.consume(conn, queue, process_message);

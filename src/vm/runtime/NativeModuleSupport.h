@@ -4,9 +4,9 @@
 #include "../core/values/ValueHelper.h"
 #include "ExecutionContext.h"
 
-#include <iostream>
 #include <algorithm>
 #include <cctype>
+#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -30,10 +30,61 @@ Core::NativeFunctionPtr MakeNative(
 	return native;
 }
 
-inline Core::ModulePtr MakeModule(const std::string& name)
+template <typename Fn>
+Core::NativeFunctionPtr MakeNative0(const std::string& name, Fn&& fn)
+{
+	auto native = std::make_shared<Core::NativeFunction>();
+	native->name = name;
+	native->arity = 0;
+	native->invoke0 = std::forward<Fn>(fn);
+	return native;
+}
+
+template <typename Fn>
+Core::NativeFunctionPtr MakeNative1(const std::string& name, Fn&& fn)
+{
+	auto native = std::make_shared<Core::NativeFunction>();
+	native->name = name;
+	native->arity = 1;
+	native->invoke1 = std::forward<Fn>(fn);
+	return native;
+}
+
+template <typename Fn>
+Core::NativeFunctionPtr MakeNative2(const std::string& name, Fn&& fn)
+{
+	auto native = std::make_shared<Core::NativeFunction>();
+	native->name = name;
+	native->arity = 2;
+	native->invoke2 = std::forward<Fn>(fn);
+	return native;
+}
+
+template <typename Fn>
+Core::NativeFunctionPtr MakeNative3(const std::string& name, Fn&& fn)
+{
+	auto native = std::make_shared<Core::NativeFunction>();
+	native->name = name;
+	native->arity = 3;
+	native->invoke3 = std::forward<Fn>(fn);
+	return native;
+}
+
+template <typename Fn>
+Core::NativeFunctionPtr MakeNative4(const std::string& name, Fn&& fn)
+{
+	auto native = std::make_shared<Core::NativeFunction>();
+	native->name = name;
+	native->arity = 4;
+	native->invoke4 = std::forward<Fn>(fn);
+	return native;
+}
+
+inline Core::ModulePtr MakeModule(const std::string& name, const bool cacheableMembers = true)
 {
 	auto module = std::make_shared<Core::Module>();
 	module->name = name;
+	module->cacheableMembers = cacheableMembers;
 	return module;
 }
 
@@ -82,8 +133,7 @@ inline int CompareValues(const Core::Value& lhs, const Core::Value& rhs, const s
 	if (std::holds_alternative<bool>(lhs) && std::holds_alternative<bool>(rhs))
 	{
 		const bool left = std::get<bool>(lhs);
-		const bool right = std::get<bool>(rhs);
-		if (left == right)
+		if (const bool right = std::get<bool>(rhs); left == right)
 		{
 			return 0;
 		}
@@ -119,7 +169,10 @@ inline Core::StringPtr RequireString(
 	return std::get<Core::StringPtr>(value);
 }
 
-inline Core::Value ConvertToInt(Execution::ExecutionContext& ctx, const Core::Value& value, const std::string& domain)
+inline Core::Value ConvertToInt(
+	Execution::ExecutionContext& ctx,
+	const Core::Value& value,
+	const std::string& domain)
 {
 	if (std::holds_alternative<int64_t>(value))
 	{
@@ -141,7 +194,7 @@ inline Core::Value ConvertToInt(Execution::ExecutionContext& ctx, const Core::Va
 			const auto result = std::stoll(*std::get<Core::StringPtr>(value), &parsed);
 			if (parsed == std::get<Core::StringPtr>(value)->size())
 			{
-				return static_cast<int64_t>(result);
+				return result;
 			}
 		}
 		catch (const std::exception&)
@@ -152,7 +205,10 @@ inline Core::Value ConvertToInt(Execution::ExecutionContext& ctx, const Core::Va
 	return std::monostate{};
 }
 
-inline Core::Value ConvertToFloat(Execution::ExecutionContext& ctx, const Core::Value& value, const std::string& domain)
+inline Core::Value ConvertToFloat(
+	Execution::ExecutionContext& ctx,
+	const Core::Value& value,
+	const std::string& domain)
 {
 	if (std::holds_alternative<double>(value))
 	{
@@ -185,7 +241,10 @@ inline Core::Value ConvertToFloat(Execution::ExecutionContext& ctx, const Core::
 	return std::monostate{};
 }
 
-inline Core::Value ConvertToBool(Execution::ExecutionContext& ctx, const Core::Value& value, const std::string& domain)
+inline Core::Value ConvertToBool(
+	Execution::ExecutionContext& ctx,
+	const Core::Value& value,
+	const std::string& domain)
 {
 	if (std::holds_alternative<bool>(value))
 	{

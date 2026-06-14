@@ -1,0 +1,20 @@
+module samples.conditions_and_loops;
+
+import std.io as io;
+
+var value: int = 3;
+if (value > 0) {
+    io.println("value is positive");
+} else {
+    io.println("value is not positive");
+}
+
+var i: int = 0;
+var sum: int = 0;
+while (i < 5) {
+    sum = sum + i;
+    io.println("loop i =", i, "sum =", sum);
+    i = i + 1;
+}
+
+io.println("final sum =", sum);

@@ -37,6 +37,7 @@ KeywordMap::KeywordMap()
 	m_map["float"] = TokenType::KW_FLOAT;
 	m_map["bool"] = TokenType::KW_BOOL;
 	m_map["string"] = TokenType::KW_STRING;
+	m_map["map"] = TokenType::KW_MAP;
 	m_map["ptr"] = TokenType::KW_PTR;
 	m_map["ref"] = TokenType::KW_REF;
 	m_map["requires"] = TokenType::KW_REQUIRES;
@@ -53,6 +54,8 @@ KeywordMap::KeywordMap()
 	m_map["transaction"] = TokenType::KW_TRANSACTION;
 	m_map["context"] = TokenType::KW_CONTEXT;
 	m_map["comptime"] = TokenType::KW_COMPTIME;
+	m_map["go"] = TokenType::KW_GO;
+	m_map["await"] = TokenType::KW_AWAIT;
 	m_map["print"] = TokenType::KW_PRINT;
 	m_map["and"] = TokenType::KW_AND;
 	m_map["or"] = TokenType::KW_OR;

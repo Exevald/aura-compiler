@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../AST.h"
-#include "../SyncRustBridge.h"
+#include "../SyncGraphAnalyzer.h"
 
 #include <optional>
 #include <stdexcept>
@@ -393,9 +393,9 @@ private:
 
 		CallableSummary summary;
 		summary.name = lambdaId;
-		for (const auto& [name, typeName] : functionExpr.params)
+		for (const auto& param : functionExpr.params)
 		{
-			summary.params.push_back(name);
+			summary.params.push_back(param.name);
 		}
 		m_callables.emplace(lambdaId, std::move(summary));
 
@@ -407,9 +407,9 @@ private:
 		}
 
 		PushScope();
-		for (const auto& [name, typeName] : functionExpr.params)
+		for (const auto& param : functionExpr.params)
 		{
-			DefineResource(name, {});
+			DefineResource(param.name, {});
 		}
 		m_functionStack.push_back(lambdaId);
 		BuildSummaryNode(functionExpr.body.get());
@@ -739,9 +739,9 @@ private:
 
 		for (const auto& heldMutex : heldLocks)
 		{
-			if (!m_rustGraph.AddLockEdge(heldMutex, mutex.id, context))
+			if (!m_syncGraph.AddLockEdge(heldMutex, mutex.id, context))
 			{
-				throw std::runtime_error(m_rustGraph.LastError());
+				throw std::runtime_error(m_syncGraph.LastError());
 			}
 		}
 		heldLocks.insert(mutex.id);
@@ -768,15 +768,15 @@ private:
 	void ApplyJoin(
 		const ResourceInfo& waitingThread,
 		const ResourceInfo& targetThread,
-		const std::string& context) const
+		const std::string& context)
 	{
 		if (waitingThread.kind != ResourceKind::Thread || targetThread.kind != ResourceKind::Thread)
 		{
 			return;
 		}
-		if (!m_rustGraph.AddJoinEdge(waitingThread.id, targetThread.id, context))
+		if (!m_syncGraph.AddJoinEdge(waitingThread.id, targetThread.id, context))
 		{
-			throw std::runtime_error(m_rustGraph.LastError());
+			throw std::runtime_error(m_syncGraph.LastError());
 		}
 	}
 
@@ -1073,7 +1073,7 @@ private:
 		}
 	}
 
-	SyncRustBridge m_rustGraph;
+	SyncGraphAnalyzer m_syncGraph;
 	std::unordered_map<std::string, std::string> m_importAliases;
 	std::vector<Scope> m_scopes;
 	HeldMap m_threadHeldLocks;

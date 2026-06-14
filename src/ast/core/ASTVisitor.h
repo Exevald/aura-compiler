@@ -21,6 +21,8 @@ class WhileStatementNode;
 class FunctionDeclNode;
 class FunctionExprNode;
 class CallNode;
+class GoExprNode;
+class AwaitExprNode;
 class MemberAccessNode;
 class ModuleDeclNode;
 class ImportDeclNode;
@@ -28,6 +30,7 @@ class ReturnNode;
 class PrintNode;
 class UnsafeNode;
 class ArrayLiteralNode;
+class MapLiteralNode;
 class IndexNode;
 class IterNode;
 class TransactionNode;
@@ -35,6 +38,7 @@ class HandleNode;
 class RawNode;
 class LeafNode;
 class ComptimeNode;
+class ContractNode;
 
 class ASTVisitor
 {
@@ -61,6 +65,8 @@ public:
 	virtual void Visit(FunctionDeclNode& node) = 0;
 	virtual void Visit(FunctionExprNode& node) = 0;
 	virtual void Visit(CallNode& node) = 0;
+	virtual void Visit(GoExprNode& node) = 0;
+	virtual void Visit(AwaitExprNode& node) = 0;
 	virtual void Visit(MemberAccessNode& node) = 0;
 	virtual void Visit(ModuleDeclNode& node) = 0;
 	virtual void Visit(ImportDeclNode& node) = 0;
@@ -68,6 +74,7 @@ public:
 	virtual void Visit(PrintNode& node) = 0;
 	virtual void Visit(UnsafeNode& node) = 0;
 	virtual void Visit(ArrayLiteralNode& node) = 0;
+	virtual void Visit(MapLiteralNode& node) = 0;
 	virtual void Visit(IndexNode& node) = 0;
 	virtual void Visit(IterNode& node) = 0;
 	virtual void Visit(TransactionNode& node) = 0;
@@ -75,4 +82,5 @@ public:
 	virtual void Visit(LeafNode& node) = 0;
 	virtual void Visit(RawNode& node) = 0;
 	virtual void Visit(ComptimeNode& node) = 0;
+	virtual void Visit(ContractNode& node) = 0;
 };

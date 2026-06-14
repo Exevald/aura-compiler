@@ -1,0 +1,60 @@
+module microservicetemplate.internal.app.service.auth.task;
+
+import std.result as result;
+
+import microservicetemplate.internal.app.context.request_context as appctx;
+import microservicetemplate.internal.app.service.task as taskapp;
+import microservicetemplate.internal.domain.model.task as domaintask;
+
+fn require_user(ctx: appctx.RequestContext) : result.Result<bool, string> {
+    if (appctx.user_id(ctx) == "") {
+        return result.Err("unauthorized:missing authenticated user");
+    }
+    return result.Ok(true);
+};
+
+struct AuthorizedTaskAppService implements taskapp.TaskAppService {
+    inner: taskapp.TaskApplicationService;
+
+    fn create(ctx: appctx.RequestContext, title: string, description: string, status: string) : result.Result<domaintask.Task, string> {
+        var allowed = require_user(ctx);
+        if (allowed.tag != 0) {
+            return result.Err(allowed[0]);
+        }
+        return self.inner.create(ctx, title, description, status);
+    }
+
+    fn get(ctx: appctx.RequestContext, id: int) : result.Result<domaintask.Task, string> {
+        var allowed = require_user(ctx);
+        if (allowed.tag != 0) {
+            return result.Err(allowed[0]);
+        }
+        return self.inner.get(ctx, id);
+    }
+
+    fn list(ctx: appctx.RequestContext) : result.Result<[domaintask.Task], string> {
+        var allowed = require_user(ctx);
+        if (allowed.tag != 0) {
+            return result.Err(allowed[0]);
+        }
+        return self.inner.list(ctx);
+    }
+
+    fn update(ctx: appctx.RequestContext, id: int, title: string, description: string, status: string) : result.Result<domaintask.Task, string> {
+        var allowed = require_user(ctx);
+        if (allowed.tag != 0) {
+            return result.Err(allowed[0]);
+        }
+        return self.inner.update(ctx, id, title, description, status);
+    }
+
+    fn delete(ctx: appctx.RequestContext, id: int) : result.Result<bool, string> {
+        var allowed = require_user(ctx);
+        if (allowed.tag != 0) {
+            return result.Err(allowed[0]);
+        }
+        return self.inner.delete(ctx, id);
+    }
+}
+
+export AuthorizedTaskAppService;

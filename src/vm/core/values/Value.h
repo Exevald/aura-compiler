@@ -4,13 +4,13 @@
 
 #include <concepts>
 #include <condition_variable>
-#include <cstdint>
 #include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unistd.h>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -28,6 +28,21 @@ struct Module;
 struct Iterator;
 struct ThreadHandle;
 struct MutexHandle;
+struct TaskHandle;
+struct ChannelHandle;
+struct ContextHandle;
+struct ListenerHandle;
+struct ConnectionHandle;
+struct HttpRequestHandle;
+struct StringMapHandle;
+struct MapHandle;
+struct MySqlConnectionHandle;
+struct MySqlPoolHandle;
+struct MySqlStatementHandle;
+struct MySqlResultHandle;
+struct MySqlRowHandle;
+struct RabbitMqConnectionHandle;
+struct RabbitMqMessageHandle;
 struct Actor;
 struct ActorMethodMap;
 struct EffectHandlerMap;
@@ -43,11 +58,31 @@ using ModulePtr = std::shared_ptr<Module>;
 using IteratorPtr = std::shared_ptr<Iterator>;
 using ThreadPtr = std::shared_ptr<ThreadHandle>;
 using MutexPtr = std::shared_ptr<MutexHandle>;
+using TaskPtr = std::shared_ptr<TaskHandle>;
+using ChannelPtr = std::shared_ptr<ChannelHandle>;
+using ContextPtr = std::shared_ptr<ContextHandle>;
+using ListenerPtr = std::shared_ptr<ListenerHandle>;
+using ConnectionPtr = std::shared_ptr<ConnectionHandle>;
+using HttpRequestPtr = std::shared_ptr<HttpRequestHandle>;
+using StringMapPtr = std::shared_ptr<StringMapHandle>;
+using MapPtr = std::shared_ptr<MapHandle>;
+using MySqlConnectionPtr = std::shared_ptr<MySqlConnectionHandle>;
+using MySqlPoolPtr = std::shared_ptr<MySqlPoolHandle>;
+using MySqlStatementPtr = std::shared_ptr<MySqlStatementHandle>;
+using MySqlResultPtr = std::shared_ptr<MySqlResultHandle>;
+using MySqlRowPtr = std::shared_ptr<MySqlRowHandle>;
+using RabbitMqConnectionPtr = std::shared_ptr<RabbitMqConnectionHandle>;
+using RabbitMqMessagePtr = std::shared_ptr<RabbitMqMessageHandle>;
 using ActorPtr = std::shared_ptr<Actor>;
 using ActorMethodMapPtr = std::shared_ptr<ActorMethodMap>;
 using HandlerMapPtr = std::shared_ptr<EffectHandlerMap>;
 
 } // namespace VM::Core
+
+namespace VM::Jit
+{
+struct CompiledFunction;
+}
 
 namespace VM::Execution
 {
@@ -77,6 +112,21 @@ using Value = std::variant<
 	IteratorPtr,
 	ThreadPtr,
 	MutexPtr,
+	TaskPtr,
+	ChannelPtr,
+	ContextPtr,
+	ListenerPtr,
+	ConnectionPtr,
+	HttpRequestPtr,
+	StringMapPtr,
+	MapPtr,
+	MySqlConnectionPtr,
+	MySqlPoolPtr,
+	MySqlStatementPtr,
+	MySqlResultPtr,
+	MySqlRowPtr,
+	RabbitMqConnectionPtr,
+	RabbitMqMessagePtr,
 	ActorPtr,
 	ActorMethodMapPtr,
 	HandlerMapPtr>;
@@ -93,6 +143,8 @@ struct Function
 	std::string name;
 	std::unique_ptr<Execution::Chunk> chunk;
 	int arity = 0;
+	int minArity = 0;
+	bool variadic = false;
 	std::vector<std::string> captureNames;
 
 	Function();
@@ -108,11 +160,21 @@ struct Closure
 struct NativeFunction
 {
 	using Handler = std::function<Value(Execution::ExecutionContext&, const std::vector<Value>&)>;
+	using Handler0 = std::function<Value(Execution::ExecutionContext&)>;
+	using Handler1 = std::function<Value(Execution::ExecutionContext&, const Value&)>;
+	using Handler2 = std::function<Value(Execution::ExecutionContext&, const Value&, const Value&)>;
+	using Handler3 = std::function<Value(Execution::ExecutionContext&, const Value&, const Value&, const Value&)>;
+	using Handler4 = std::function<Value(Execution::ExecutionContext&, const Value&, const Value&, const Value&, const Value&)>;
 
 	std::string name;
 	int arity = 0;
 	bool variadic = false;
 	Handler invoke;
+	Handler0 invoke0;
+	Handler1 invoke1;
+	Handler2 invoke2;
+	Handler3 invoke3;
+	Handler4 invoke4;
 };
 
 struct Array
@@ -142,6 +204,8 @@ struct Pointer
 struct Module
 {
 	std::string name;
+	bool cacheableMembers = false;
+	mutable std::unordered_map<std::string, Value> memberCache;
 };
 
 struct ThreadHandle
@@ -152,6 +216,150 @@ struct ThreadHandle
 struct MutexHandle
 {
 	size_t id = 0;
+};
+
+struct TaskHandle
+{
+	size_t id = 0;
+};
+
+struct ChannelHandle
+{
+	size_t id = 0;
+};
+
+struct ContextHandle
+{
+	size_t id = 0;
+};
+
+struct ListenerHandle
+{
+	int fd = -1;
+	uint16_t port = 0;
+	std::mutex mutex;
+
+	~ListenerHandle()
+	{
+		if (fd >= 0)
+		{
+			::close(fd);
+		}
+	}
+};
+
+struct ConnectionHandle
+{
+	int fd = -1;
+	uint16_t port = 0;
+	std::mutex mutex;
+
+	~ConnectionHandle()
+	{
+		if (fd >= 0)
+		{
+			::close(fd);
+		}
+	}
+};
+
+struct HttpRequestHandle
+{
+	std::string method;
+	std::string path;
+	std::string body;
+	std::unordered_map<std::string, std::string> headers;
+	ArrayPtr cachedSegments;
+};
+
+struct StringMapHandle
+{
+	std::mutex mutex;
+	std::unordered_map<std::string, StringPtr> values;
+};
+
+struct MapHandle
+{
+	struct Entry
+	{
+		Value key;
+		Value value;
+	};
+
+	std::mutex mutex;
+	std::unordered_map<std::string, Entry> entries;
+};
+
+struct MySqlPoolHandle
+{
+	std::vector<void*> availableConnections;
+	std::vector<void*> allConnections;
+	std::mutex mutex;
+	std::string lastError;
+
+	~MySqlPoolHandle();
+};
+
+struct MySqlConnectionHandle
+{
+	void* connection = nullptr;
+	MySqlPoolPtr owningPool;
+	bool pooledLease = false;
+	std::mutex mutex;
+	std::string lastError;
+
+	~MySqlConnectionHandle();
+};
+
+struct MySqlStatementHandle
+{
+	void* statement = nullptr;
+	MySqlConnectionPtr connection;
+	bool ownsConnectionLease = false;
+	std::vector<Value> boundValues;
+	std::string lastError;
+
+	~MySqlStatementHandle();
+};
+
+struct MySqlRowHandle
+{
+	std::shared_ptr<std::vector<std::string>> columnNames;
+	std::shared_ptr<std::unordered_map<std::string, size_t>> nameToIndex;
+	std::vector<Value> values;
+};
+
+struct MySqlResultHandle
+{
+	std::vector<std::string> columnNames;
+	std::vector<MySqlRowPtr> rows;
+	size_t cursor = 0;
+	int64_t affectedRows = 0;
+	int64_t lastInsertId = 0;
+	std::string lastError;
+};
+
+struct RabbitMqConnectionHandle
+{
+	void* connection = nullptr;
+	int channel = 1;
+	std::mutex mutex;
+	std::string url;
+	std::string lastError;
+	bool open = false;
+
+	~RabbitMqConnectionHandle();
+};
+
+struct RabbitMqMessageHandle
+{
+	RabbitMqConnectionPtr connection;
+	int channel = 1;
+	int64_t deliveryTag = 0;
+	std::string queue;
+	std::string routingKey;
+	std::string body;
+	bool acknowledged = false;
 };
 
 struct Actor
@@ -188,7 +396,7 @@ struct Actor
 	size_t runtimeId = 0;
 	std::mutex mutex;
 	std::condition_variable cv;
-	std::thread worker;
+	std::jthread worker;
 	std::thread::id workerThreadId;
 	bool stopping = false;
 	uint64_t nextRequestId = 1;
@@ -199,6 +407,7 @@ struct Actor
 			std::lock_guard<std::mutex> lock(mutex);
 			stopping = true;
 		}
+		worker.request_stop();
 		cv.notify_all();
 		if (worker.joinable())
 		{

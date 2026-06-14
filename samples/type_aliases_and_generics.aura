@@ -1,0 +1,37 @@
+module samples.type_aliases_and_generics;
+
+import std.io as io;
+
+type Reducer<T> = (T, T) -> T;
+type IntList = [int];
+
+struct Box<T> {
+    value: T;
+
+    fn get() : T {
+        return self.value;
+    }
+}
+
+fn choose<T>(left: T, right: T, reduce: Reducer<T>) : T {
+    return reduce(left, right);
+}
+
+fn double_value<T: int>(value: T) : int {
+    return value + value;
+}
+
+var values: IntList = [20, 22];
+var pick_larger: Reducer<int> = fn(left: int, right: int) -> {
+    if (left > right) {
+        return left;
+    }
+    return right;
+};
+
+var picked = choose(values[0], values[1], pick_larger);
+var boxed = Box(picked);
+
+io.println("picked =", picked);
+io.println("boxed =", boxed.get());
+io.println("double =", double_value(21));

@@ -1,0 +1,38 @@
+module std.service;
+
+import std.service_native as native;
+import std.context as ctx;
+import std.env as env;
+import std.core as core;
+
+export fn store_new() : std.service.Store {
+    return native.store_new();
+};
+
+export fn store_get(store: std.service.Store, key: string) : string {
+    return native.store_get(store, key);
+};
+
+export fn store_set(store: std.service.Store, key: string, value: string) : int {
+    return native.store_set(store, key, value);
+};
+
+export fn store_delete(store: std.service.Store, key: string) : bool {
+    return native.store_delete(store, key);
+};
+
+export fn store_len(store: std.service.Store) : int {
+    return native.store_len(store);
+};
+
+export fn shutdown_context() : std.context.Context {
+    return native.shutdown_context();
+};
+
+export fn port_or(default_port: int) : int {
+    return core.to_int(env.get_or("PORT", core.to_string(default_port)));
+};
+
+export fn host_or(default_host: string) : string {
+    return env.get_or("HOST", default_host);
+};

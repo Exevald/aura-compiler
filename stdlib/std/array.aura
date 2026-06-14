@@ -1,0 +1,27 @@
+module std.array;
+
+import std.core as core;
+
+export fn len<T>(values: [T]) : int {
+    return core.len(values);
+};
+
+export fn sort<T>(values: [T]) : [T] {
+    return core.sort(values);
+};
+
+export fn push<T>(values: [T], value: T) : [T] {
+    return core.push(values, value);
+};
+
+export fn pop<T>(values: [T]) : T {
+    return core.pop(values);
+};
+
+export fn remove<T>(values: [T], item: T) {
+    return core.remove(values, item);
+};
+
+export fn remove_at<T>(values: [T], index: int) : [T] {
+    return core.remove_at(values, index);
+};

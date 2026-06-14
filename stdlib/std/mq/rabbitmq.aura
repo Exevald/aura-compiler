@@ -1,0 +1,58 @@
+module std.mq.rabbitmq;
+
+import std.json as json;
+import std.mq.rabbitmq_native as native;
+
+export fn open(url: string) : std.mq.rabbitmq.Connection {
+    return native.open(url);
+};
+
+export fn close(conn: std.mq.rabbitmq.Connection) : bool {
+    return native.close(conn);
+};
+
+export fn declare_queue(conn: std.mq.rabbitmq.Connection, name: string) : bool {
+    return native.declare_queue(conn, name);
+};
+
+export fn publish(conn: std.mq.rabbitmq.Connection, queue: string, body: string) : bool {
+    return native.publish(conn, queue, body);
+};
+
+export fn publish_json(conn: std.mq.rabbitmq.Connection, queue: string, body_json: string) : bool
+requires (json.is_valid(body_json))
+{
+    return native.publish(conn, queue, json.compact(body_json));
+};
+
+export fn consume(conn: std.mq.rabbitmq.Connection, queue: string, handler) : void {
+    native.consume(conn, queue, handler);
+};
+
+export fn consume_with_options(conn: std.mq.rabbitmq.Connection, queue: string, prefetch: int, handler) : void {
+    native.consume_with_options(conn, queue, prefetch, handler);
+};
+
+export fn ack(message: std.mq.rabbitmq.Message) : bool {
+    return native.ack(message);
+};
+
+export fn nack(message: std.mq.rabbitmq.Message, requeue: bool) : bool {
+    return native.nack(message, requeue);
+};
+
+export fn body(message: std.mq.rabbitmq.Message) : string {
+    return native.body(message);
+};
+
+export fn delivery_tag(message: std.mq.rabbitmq.Message) : int {
+    return native.delivery_tag(message);
+};
+
+export fn routing_key(message: std.mq.rabbitmq.Message) : string {
+    return native.routing_key(message);
+};
+
+export fn error(conn: std.mq.rabbitmq.Connection) : string {
+    return native.error(conn);
+};

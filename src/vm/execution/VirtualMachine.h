@@ -29,7 +29,9 @@ class VirtualMachine
 {
 public:
 	VirtualMachine();
-	explicit VirtualMachine(std::shared_ptr<Runtime::SharedRuntime> runtime, bool installStdlib);
+	explicit VirtualMachine(
+		std::shared_ptr<Runtime::SharedRuntime> runtime,
+		bool installStdlib);
 	~VirtualMachine() = default;
 
 	VirtualMachine(const VirtualMachine&) = delete;
@@ -38,6 +40,10 @@ public:
 	VirtualMachine& operator=(VirtualMachine&&) noexcept = default;
 
 	bool Interpret(const Chunk* chunk);
+	std::optional<std::string> RunCallable(
+		const Core::Value& callee,
+		const std::vector<Core::Value>& args,
+		Core::Value& result);
 
 	ExecutionContext& GetContext() { return m_context; }
 	[[nodiscard]] const ExecutionContext& GetContext() const { return m_context; }
@@ -54,6 +60,7 @@ private:
 		VirtualMachine& vm;
 
 		int BuildArray(uint8_t count) const;
+		int BuildMap(uint8_t pairCount) const;
 		int BuildStruct(uint8_t fieldCount) const;
 		int BuildEnum(uint8_t tag, uint8_t argCount) const;
 		int BuildActor(uint16_t blueprintOperand, uint8_t fieldCount) const;

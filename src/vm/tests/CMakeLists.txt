@@ -1,3 +1,3 @@
-add_subdirectory(core_tests)
-add_subdirectory(execution_tests)
-add_subdirectory(integrational_tests)
+add_subdirectory(unit)
+add_subdirectory(integration)
+add_subdirectory(e2e)

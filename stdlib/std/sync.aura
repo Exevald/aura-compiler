@@ -1,0 +1,31 @@
+module std.sync;
+
+import std.sync_native as native;
+
+export fn current_thread() : std.sync.Thread {
+    return native.current_thread();
+};
+
+export fn spawn() : std.sync.Thread {
+    return native.spawn();
+};
+
+export fn mutex() : std.sync.Mutex {
+    return native.mutex();
+};
+
+export fn lock(thread: std.sync.Thread, mutex_value: std.sync.Mutex) : bool {
+    return native.lock(thread, mutex_value);
+};
+
+export fn unlock(thread: std.sync.Thread, mutex_value: std.sync.Mutex) : bool {
+    return native.unlock(thread, mutex_value);
+};
+
+export fn join(waiting_thread: std.sync.Thread, target_thread: std.sync.Thread) : bool {
+    return native.join(waiting_thread, target_thread);
+};
+
+export fn finish(thread: std.sync.Thread) : bool {
+    return native.finish(thread);
+};

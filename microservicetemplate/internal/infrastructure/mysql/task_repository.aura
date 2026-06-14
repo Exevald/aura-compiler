@@ -1,0 +1,90 @@
+module microservicetemplate.internal.infrastructure.mysql.task_repository;
+
+import std.array as array;
+import std.db.mysql as db;
+import std.option as option;
+import std.text as text;
+
+import microservicetemplate.internal.domain.model.task as domaintask;
+
+fn row_to_task(row: std.mysql.Row) : domaintask.Task {
+    return domaintask.Task(
+        db.get(row, "id"),
+        text.to_string(db.get(row, "owner_user_id")),
+        text.to_string(db.get(row, "title")),
+        text.to_string(db.get(row, "description")),
+        text.to_string(db.get(row, "status")),
+        text.to_string(db.get(row, "created_at")),
+        text.to_string(db.get(row, "updated_at"))
+    );
+};
+
+fn find_task(db_handle, id: int, owner_user_id: string) : option.Option<domaintask.Task> {
+    var row = db.query_one(
+        db_handle,
+        "SELECT id, owner_user_id, title, description, status, created_at, updated_at FROM task WHERE id = ? AND owner_user_id = ?",
+        [id, owner_user_id]
+    );
+    if (db.is_null(row)) {
+        return option.None();
+    }
+    return option.Some(row_to_task(row));
+};
+
+struct MySqlTaskRepository implements domaintask.TaskRepository {
+    db_handle: any;
+
+    fn create(owner_user_id: string, title: string, description: string, status: string) : domaintask.Task {
+        const insert_query = "INSERT INTO task (owner_user_id, title, description, status) VALUES (?, ?, ?, ?)";
+        const result = db.exec_stmt(
+            db_handle,
+            insert_query,
+            [owner_user_id, title, description, status]
+        );
+        const task_id = db.last_insert_id(result);
+        return domaintask.Task(
+            task_id,
+            owner_user_id,
+            title,
+            description,
+            status,
+            "",
+            "");
+    }
+
+    fn find_by_id_for_owner(id: int, owner_user_id: string) : option.Option<domaintask.Task> {
+        return find_task(db_handle, id, owner_user_id);
+    }
+
+    fn list_for_owner(owner_user_id: string) : [domaintask.Task] {
+        var rows = db.query_all(
+            db_handle,
+            "SELECT id, owner_user_id, title, description, status, created_at, updated_at FROM task WHERE owner_user_id = ? ORDER BY id ASC",
+            [owner_user_id]
+        );
+        var tasks: [domaintask.Task] = [];
+        iter (row of rows) {
+            array.push(tasks, row_to_task(row));
+        }
+        return tasks;
+    }
+
+    fn update_for_owner(id: int, owner_user_id: string, title: string, description: string, status: string) : option.Option<domaintask.Task> {
+        const update_query = "UPDATE task SET title = ?, description = ?, status = ? WHERE id = ? AND owner_user_id = ?";
+        const result = db.exec_stmt(
+            db_handle,
+            update_query,
+            [title, description, status, id, owner_user_id]
+        );
+        if (db.affected_rows(result) == 0) {
+            return option.None();
+        }
+        return find_task(db_handle, id, owner_user_id);
+    }
+
+    fn delete_for_owner(id: int, owner_user_id: string) : bool {
+        const delete_query = "DELETE FROM task WHERE id = ? AND owner_user_id = ?";
+        const result = db.exec_stmt(db_handle, delete_query, [id, owner_user_id]);
+        return db.affected_rows(result) > 0;
+    }
+}

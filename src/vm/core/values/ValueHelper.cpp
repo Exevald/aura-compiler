@@ -68,6 +68,66 @@ std::string_view ValueHelper::GetTypeName(const Value& val) noexcept
 		{
 			return "mutex";
 		}
+		else if constexpr (std::is_same_v<T, TaskPtr>)
+		{
+			return "task";
+		}
+		else if constexpr (std::is_same_v<T, ChannelPtr>)
+		{
+			return "channel";
+		}
+		else if constexpr (std::is_same_v<T, ContextPtr>)
+		{
+			return "context";
+		}
+		else if constexpr (std::is_same_v<T, ListenerPtr>)
+		{
+			return "listener";
+		}
+		else if constexpr (std::is_same_v<T, ConnectionPtr>)
+		{
+			return "connection";
+		}
+		else if constexpr (std::is_same_v<T, HttpRequestPtr>)
+		{
+			return "http_request";
+		}
+		else if constexpr (std::is_same_v<T, StringMapPtr>)
+		{
+			return "string_store";
+		}
+		else if constexpr (std::is_same_v<T, MapPtr>)
+		{
+			return "map";
+		}
+		else if constexpr (std::is_same_v<T, MySqlConnectionPtr>)
+		{
+			return "mysql_connection";
+		}
+		else if constexpr (std::is_same_v<T, MySqlPoolPtr>)
+		{
+			return "mysql_pool";
+		}
+		else if constexpr (std::is_same_v<T, MySqlStatementPtr>)
+		{
+			return "mysql_statement";
+		}
+		else if constexpr (std::is_same_v<T, MySqlResultPtr>)
+		{
+			return "mysql_result";
+		}
+		else if constexpr (std::is_same_v<T, MySqlRowPtr>)
+		{
+			return "mysql_row";
+		}
+		else if constexpr (std::is_same_v<T, RabbitMqConnectionPtr>)
+		{
+			return "rabbitmq_connection";
+		}
+		else if constexpr (std::is_same_v<T, RabbitMqMessagePtr>)
+		{
+			return "rabbitmq_message";
+		}
 		else
 		{
 			return "unknown";
@@ -140,6 +200,66 @@ void ValueHelper::PrintValue(const Value& val, std::ostream& out)
 		else if constexpr (std::is_same_v<T, MutexPtr>)
 		{
 			out << "<mutex " << (v ? std::to_string(v->id) : "null") << ">";
+		}
+		else if constexpr (std::is_same_v<T, TaskPtr>)
+		{
+			out << "<task " << (v ? std::to_string(v->id) : "null") << ">";
+		}
+		else if constexpr (std::is_same_v<T, ChannelPtr>)
+		{
+			out << "<channel " << (v ? std::to_string(v->id) : "null") << ">";
+		}
+		else if constexpr (std::is_same_v<T, ContextPtr>)
+		{
+			out << "<context " << (v ? std::to_string(v->id) : "null") << ">";
+		}
+		else if constexpr (std::is_same_v<T, ListenerPtr>)
+		{
+			out << "<listener " << (v ? std::to_string(v->port) : "null") << ">";
+		}
+		else if constexpr (std::is_same_v<T, ConnectionPtr>)
+		{
+			out << "<connection " << (v ? std::to_string(v->port) : "null") << ">";
+		}
+		else if constexpr (std::is_same_v<T, HttpRequestPtr>)
+		{
+			out << "<http_request " << (v ? v->method + " " + v->path : "null") << ">";
+		}
+		else if constexpr (std::is_same_v<T, StringMapPtr>)
+		{
+			out << "<string_store " << (v ? std::to_string(v->values.size()) : "null") << ">";
+		}
+		else if constexpr (std::is_same_v<T, MapPtr>)
+		{
+			out << "<map " << (v ? std::to_string(v->entries.size()) : "null") << ">";
+		}
+		else if constexpr (std::is_same_v<T, MySqlConnectionPtr>)
+		{
+			out << "<mysql_connection " << (v && v->connection ? "open" : "closed") << ">";
+		}
+		else if constexpr (std::is_same_v<T, MySqlPoolPtr>)
+		{
+			out << "<mysql_pool " << (v ? std::to_string(v->allConnections.size()) : "null") << ">";
+		}
+		else if constexpr (std::is_same_v<T, MySqlStatementPtr>)
+		{
+			out << "<mysql_statement " << (v && v->statement ? "ready" : "closed") << ">";
+		}
+		else if constexpr (std::is_same_v<T, MySqlResultPtr>)
+		{
+			out << "<mysql_result " << (v ? std::to_string(v->rows.size()) : "null") << ">";
+		}
+		else if constexpr (std::is_same_v<T, MySqlRowPtr>)
+		{
+			out << "<mysql_row " << (v ? std::to_string(v->values.size()) : "null") << ">";
+		}
+		else if constexpr (std::is_same_v<T, RabbitMqConnectionPtr>)
+		{
+			out << "<rabbitmq_connection " << (v && v->open ? "open" : "closed") << ">";
+		}
+		else if constexpr (std::is_same_v<T, RabbitMqMessagePtr>)
+		{
+			out << "<rabbitmq_message " << (v ? std::to_string(v->deliveryTag) : "null") << ">";
 		}
 		else
 		{

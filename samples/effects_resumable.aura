@@ -1,0 +1,17 @@
+module samples.effects_resumable;
+
+import std.io as io;
+
+effect Input {
+    fn read_number() : int;
+}
+
+fn compute() raises { Input } {
+    io.println("effect result:", read_number() + 35);
+}
+
+handle compute() with {
+    effect read_number() -> {
+        resume(7);
+    }
+}

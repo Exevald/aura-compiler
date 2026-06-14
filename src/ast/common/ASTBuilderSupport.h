@@ -7,6 +7,9 @@
 namespace ASTBuilderDetail
 {
 
+inline std::string ExtractQualifiedId(ASTNode* node);
+inline std::string ExtractQualifiedId(const ASTNode* node);
+
 inline std::string ExtractType(const ASTNode* node)
 {
 	if (!node)
@@ -47,17 +50,40 @@ inline std::string ExtractType(const ASTNode* node)
 
 		if (tail->children.size() >= 2)
 		{
+			if (left.find(',') != std::string::npos
+				&& !(left.size() >= 2 && left.front() == '(' && left.back() == ')'))
+			{
+				return "(" + left + ")->" + ExtractType(tail->children[1].get());
+			}
 			return left + "->" + ExtractType(tail->children[1].get());
 		}
 		return left;
 	}
 	if (raw->ruleName == "base_dataType" && !raw->children.empty())
 	{
+		if (auto* qualifiedRaw = dynamic_cast<RawNode*>(raw->children[0].get());
+			qualifiedRaw && qualifiedRaw->ruleName == "qualified_id")
+		{
+			std::string result = ExtractQualifiedId(qualifiedRaw);
+			if (raw->children.size() >= 2)
+			{
+				const std::string typeArgs = ExtractType(raw->children[1].get());
+				if (!typeArgs.empty())
+				{
+					result += typeArgs;
+				}
+			}
+			return result;
+		}
 		if (auto* leaf = dynamic_cast<LeafNode*>(raw->children[0].get()))
 		{
 			if (leaf->value == "[")
 			{
 				return "[" + ExtractType(raw->children[1].get()) + "]";
+			}
+			if (leaf->value == "map" && raw->children.size() >= 4)
+			{
+				return "map<" + ExtractType(raw->children[2].get()) + "," + ExtractType(raw->children[4].get()) + ">";
 			}
 			if ((leaf->value == "ptr" || leaf->value == "ref") && raw->children.size() >= 3)
 			{
@@ -78,7 +104,12 @@ inline std::string ExtractType(const ASTNode* node)
 			}
 			if (leaf->value == "(" && raw->children.size() >= 2)
 			{
-				return "(" + ExtractType(raw->children[1].get()) + ")";
+				const std::string inner = ExtractType(raw->children[1].get());
+				if (inner.find(',') != std::string::npos)
+				{
+					return "(" + inner + ")";
+				}
+				return inner;
 			}
 			return leaf->value;
 		}
@@ -208,6 +239,11 @@ inline std::string ExtractQualifiedId(ASTNode* node)
 	}
 
 	return {};
+}
+
+inline std::string ExtractQualifiedId(const ASTNode* node)
+{
+	return ExtractQualifiedId(const_cast<ASTNode*>(node));
 }
 
 } // namespace ASTBuilderDetail

@@ -1,0 +1,158 @@
+module microservicetemplate.internal.app.service.task;
+
+import std.db.mysql as db;
+import std.result as result;
+
+import microservicetemplate.internal.app.context.request_context as appctx;
+import microservicetemplate.internal.app.service.task_cache as cache;
+import microservicetemplate.internal.domain.model.task as domaintask;
+import microservicetemplate.internal.domain.service.task as domaintaskservice;
+import microservicetemplate.internal.infrastructure.mysql.task_repository as mysqlrepo;
+
+fn not_found_error() : string {
+    return "not_found:task not found";
+};
+
+fn unauthorized_error() : string {
+    return "unauthorized:missing authenticated user";
+};
+
+fn read_repo(pool: std.mysql.Pool) : mysqlrepo.MySqlTaskRepository {
+    return mysqlrepo.MySqlTaskRepository(pool);
+};
+
+fn write_repo(conn: std.mysql.Connection) : mysqlrepo.MySqlTaskRepository {
+    return mysqlrepo.MySqlTaskRepository(conn);
+};
+
+fn tx_create_task(
+    tx_conn: std.mysql.Connection,
+    owner_user_id: string,
+    title: string,
+    description: string,
+    status: string) : result.Result<domaintask.Task, string> {
+    var created = domaintaskservice.create_new_task(owner_user_id, title, description, status);
+    if (created.tag != 0) {
+        return result.Err(created[0]);
+    }
+    var repo: mysqlrepo.MySqlTaskRepository = write_repo(tx_conn);
+    return result.Ok(repo.create(owner_user_id, title, description, status));
+};
+
+fn tx_update_task(
+    tx_conn: std.mysql.Connection,
+    owner_user_id: string,
+    id: int,
+    title: string,
+    description: string,
+    status: string) : result.Result<domaintask.Task, string> {
+    var repo: mysqlrepo.MySqlTaskRepository = write_repo(tx_conn);
+    var existing = repo.find_by_id_for_owner(id, owner_user_id);
+    if (existing.tag != 0) {
+        return result.Err(not_found_error());
+    }
+
+    var updated = domaintaskservice.update_task(existing[0], title, description, status);
+    if (updated.tag != 0) {
+        return result.Err(updated[0]);
+    }
+
+    var persisted = repo.update_for_owner(id, owner_user_id, title, description, status);
+    if (persisted.tag != 0) {
+        return result.Err(not_found_error());
+    }
+    return result.Ok(persisted[0]);
+};
+
+fn tx_delete_task(tx_conn: std.mysql.Connection, owner_user_id: string, id: int) : result.Result<bool, string> {
+    var repo: mysqlrepo.MySqlTaskRepository = write_repo(tx_conn);
+    if (!repo.delete_for_owner(id, owner_user_id)) {
+        return result.Err(not_found_error());
+    }
+    return result.Ok(true);
+};
+
+interface TaskAppService {
+    fn create(ctx: appctx.RequestContext, title: string, description: string, status: string) : result.Result<domaintask.Task, string>;
+    fn get(ctx: appctx.RequestContext, id: int) : result.Result<domaintask.Task, string>;
+    fn list(ctx: appctx.RequestContext) : result.Result<[domaintask.Task], string>;
+    fn update(ctx: appctx.RequestContext, id: int, title: string, description: string, status: string) : result.Result<domaintask.Task, string>;
+    fn delete(ctx: appctx.RequestContext, id: int) : result.Result<bool, string>;
+}
+
+export TaskAppService;
+
+struct TaskApplicationService implements TaskAppService {
+    pool: std.mysql.Pool;
+    db_dsn: string;
+    task_cache: cache.TaskCache;
+
+    fn create(ctx: appctx.RequestContext, title: string, description: string, status: string) : result.Result<domaintask.Task, string> {
+        var owner_user_id = appctx.user_id(ctx);
+        if (owner_user_id == "") {
+            return result.Err(unauthorized_error());
+        }
+
+        var conn = db.open(db_dsn);
+        var outcome: result.Result<domaintask.Task, string> = db.with_tx(conn, fn(tx_conn) -> {
+            return tx_create_task(tx_conn, owner_user_id, title, description, status);
+        });
+        db.close(conn);
+        return outcome;
+    }
+
+    fn get(ctx: appctx.RequestContext, id: int) : result.Result<domaintask.Task, string> {
+        var owner_user_id = appctx.user_id(ctx);
+        if (owner_user_id == "") {
+            return result.Err(unauthorized_error());
+        }
+
+        var repo: mysqlrepo.MySqlTaskRepository = read_repo(pool);
+        var found = repo.find_by_id_for_owner(id, owner_user_id);
+        if (found.tag != 0) {
+            return result.Err(not_found_error());
+        }
+        return result.Ok(found[0]);
+    }
+
+    fn list(ctx: appctx.RequestContext) : result.Result<[domaintask.Task], string> {
+        var owner_user_id = appctx.user_id(ctx);
+        if (owner_user_id == "") {
+            return result.Err(unauthorized_error());
+        }
+
+        var repo: mysqlrepo.MySqlTaskRepository = read_repo(pool);
+        var tasks = repo.list_for_owner(owner_user_id);
+        return result.Ok(tasks);
+    }
+
+    fn update(ctx: appctx.RequestContext, id: int, title: string, description: string, status: string) : result.Result<domaintask.Task, string> {
+        var owner_user_id = appctx.user_id(ctx);
+        if (owner_user_id == "") {
+            return result.Err(unauthorized_error());
+        }
+
+        var conn = db.open(db_dsn);
+        var outcome: result.Result<domaintask.Task, string> = db.with_tx(conn, fn(tx_conn) -> {
+            return tx_update_task(tx_conn, owner_user_id, id, title, description, status);
+        });
+        db.close(conn);
+        return outcome;
+    }
+
+    fn delete(ctx: appctx.RequestContext, id: int) : result.Result<bool, string> {
+        var owner_user_id = appctx.user_id(ctx);
+        if (owner_user_id == "") {
+            return result.Err(unauthorized_error());
+        }
+
+        var conn = db.open(db_dsn);
+        var outcome: result.Result<bool, string> = db.with_tx(conn, fn(tx_conn) -> {
+            return tx_delete_task(tx_conn, owner_user_id, id);
+        });
+        db.close(conn);
+        return outcome;
+    }
+}
+
+export TaskApplicationService;

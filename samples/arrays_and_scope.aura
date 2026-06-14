@@ -1,0 +1,25 @@
+module samples.arrays_and_scope;
+
+import std.array as arr;
+import std.io as io;
+
+var numbers: [int] = [10, 20, 30];
+var matrix: [[int]] = [[1, 2], [3, 4]];
+numbers[1] = numbers[1] + 5;
+arr.push(numbers, 40);
+
+io.println("numbers =", numbers);
+io.println("numbers[1] =", numbers[1]);
+io.println("matrix =", matrix);
+io.println("matrix[0] =", matrix[0]);
+io.println("matrix[1][0] =", matrix[1][0]);
+
+{
+    var localTotal: int = numbers[0] + numbers[1] + numbers[2] + numbers[3];
+    io.println("local total inside block =", localTotal);
+}
+{
+    var blockMessage: string = "this value exists only inside the block";
+    io.println(blockMessage);
+}
+io.println("outer numbers length =", arr.len(numbers));

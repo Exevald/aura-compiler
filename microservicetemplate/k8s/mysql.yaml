@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: microservicetemplate-mysql-secret
+  namespace: aura-microservicetemplate
+type: Opaque
+stringData:
+  mysql-root-password: root
+  mysql-user: aura
+  mysql-password: aura
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: microservicetemplate-mysql-config
+  namespace: aura-microservicetemplate
+data:
+  mysql-database: microservicetemplate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: microservicetemplate-mysql-data
+  namespace: aura-microservicetemplate
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: microservicetemplate-mysql
+  namespace: aura-microservicetemplate
+spec:
+  selector:
+    app: microservicetemplate-mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: microservicetemplate-mysql
+  namespace: aura-microservicetemplate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: microservicetemplate-mysql
+  template:
+    metadata:
+      labels:
+        app: microservicetemplate-mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0.36
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: microservicetemplate-mysql-secret
+                  key: mysql-root-password
+            - name: MYSQL_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: microservicetemplate-mysql-config
+                  key: mysql-database
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: microservicetemplate-mysql-secret
+                  key: mysql-user
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: microservicetemplate-mysql-secret
+                  key: mysql-password
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - mysqladmin ping -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - mysqladmin ping -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-data
+          persistentVolumeClaim:
+            claimName: microservicetemplate-mysql-data

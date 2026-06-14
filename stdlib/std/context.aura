@@ -1,0 +1,19 @@
+module std.context;
+
+import std.context_native as native;
+
+export fn background() : std.context.Context {
+    return native.background();
+};
+
+export fn with_cancel(parent: std.context.Context) : std.context.Context {
+    return native.with_cancel(parent);
+};
+
+export fn cancel(value: std.context.Context) : bool {
+    return native.cancel(value);
+};
+
+export fn is_cancelled(value: std.context.Context) : bool {
+    return native.is_cancelled(value);
+};

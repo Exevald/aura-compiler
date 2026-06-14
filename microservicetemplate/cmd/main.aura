@@ -1,0 +1,52 @@
+module microservicetemplate.cmd.main;
+
+import std.config as config;
+import std.db.mysql as db;
+import std.http.middleware as middleware;
+import std.http.server as server;
+import std.log as log;
+import std.service as service;
+
+import microservicetemplate.internal.app.service.auth.task as taskauth;
+import microservicetemplate.internal.app.service.task as taskapp;
+import microservicetemplate.internal.app.service.task_cache as taskcache;
+import microservicetemplate.internal.infrastructure.auth.jwt_token_parser as jwt;
+import microservicetemplate.internal.infrastructure.transport.api;
+
+const host = service.host_or("0.0.0.0");
+const port = service.port_or(8082);
+const db_dsn = config.require("MYSQL_DSN");
+const db_pool_size = config.get_int("MYSQL_POOL_SIZE", 4);
+const auth_jwt_secret = config.require("AUTH_JWT_SECRET");
+const read_timeout_ms = config.get_duration_ms("READ_TIMEOUT_MS", 1000);
+const write_timeout_ms = config.get_duration_ms("WRITE_TIMEOUT_MS", 1000);
+const shutdown = service.shutdown_context();
+const readiness = service.store_new();
+const pool = db.open_pool(db_dsn, db_pool_size);
+
+if (db.ping(pool)) {
+    service.store_set(readiness, "status", "ready");
+} else {
+    service.store_set(readiness, "status", "not-ready");
+    log.Warn("mysql ping failed", db.error(pool));
+}
+
+const cache = taskcache.new();
+const base_task_service = taskapp.TaskApplicationService(pool, db_dsn, cache);
+const secured_task_service = taskauth.AuthorizedTaskAppService(base_task_service);
+const parser: jwt.JwtTokenParser = jwt.JwtTokenParser(auth_jwt_secret);
+api.init(secured_task_service, parser, cache, readiness);
+const route = api.route;
+
+const app = middleware.chain(route, [
+    middleware.request_logger,
+    middleware.with_response_header("X-Service", "microservicetemplate")
+]);
+
+server.listen_and_serve_with(
+    host,
+    port,
+    app,
+    shutdown,
+    read_timeout_ms,
+    write_timeout_ms);

@@ -1,0 +1,7 @@
+module samples.uuid_basic;
+
+import std.io as io;
+import std.uuid as uuid;
+
+var request_id = uuid.new_v4();
+io.println("request_id", request_id);

@@ -1,0 +1,11 @@
+module std.crypto;
+
+import std.crypto_native as native;
+
+export fn hmac_sha256_base64url(key: string, data: string) : string {
+    return native.hmac_sha256_base64url(key, data);
+};
+
+export fn constant_time_equal(left: string, right: string) : bool {
+    return native.constant_time_equal(left, right);
+};

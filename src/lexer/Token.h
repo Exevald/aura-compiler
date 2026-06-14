@@ -19,6 +19,7 @@ enum class TokenType
 	COMMA,
 	COLON,
 	DOT,
+	ELLIPSIS,
 	PIPE,
 	ARROW,
 
@@ -81,6 +82,7 @@ enum class TokenType
 	KW_FLOAT,
 	KW_BOOL,
 	KW_STRING,
+	KW_MAP,
 	KW_PTR,
 	KW_REF,
 
@@ -100,6 +102,8 @@ enum class TokenType
 	KW_TRANSACTION,
 	KW_CONTEXT,
 	KW_COMPTIME,
+	KW_GO,
+	KW_AWAIT,
 
 	KW_PRINT,
 

@@ -19,10 +19,15 @@ class InterfaceDeclNode : public ASTNode
 {
 public:
 	std::string name;
+	std::vector<TypeParameterDecl> typeParams;
 	std::vector<InterfaceMethodSig> methods;
 
-	InterfaceDeclNode(std::string interfaceName, std::vector<InterfaceMethodSig> methodDecls)
+	InterfaceDeclNode(
+		std::string interfaceName,
+		std::vector<TypeParameterDecl> genericParams,
+		std::vector<InterfaceMethodSig> methodDecls)
 		: name(std::move(interfaceName))
+		, typeParams(std::move(genericParams))
 		, methods(std::move(methodDecls))
 	{
 	}

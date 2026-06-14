@@ -1,0 +1,117 @@
+module std.http.server;
+
+import std.context as ctx;
+import std.http.server_native as native;
+import std.http.raw as raw;
+import std.text as text;
+
+export fn serve_once(address: string, port: int, route_fn) : void {
+    native.serve_once(address, port, route_fn);
+};
+
+export fn serve_n(address: string, port: int, max_requests: int, route_fn) : void {
+    native.serve_n(address, port, max_requests, route_fn);
+};
+
+export fn listen_and_serve(address: string, port: int, route_fn) : void {
+    native.listen_and_serve(address, port, route_fn);
+};
+
+export fn listen_and_serve_with(
+    address: string,
+    port: int,
+    route_fn,
+    shutdown_ctx: std.context.Context,
+    read_timeout_ms: int,
+    write_timeout_ms: int) : void {
+    native.listen_and_serve_with(
+        address,
+        port,
+        route_fn,
+        shutdown_ctx,
+        read_timeout_ms,
+        write_timeout_ms);
+};
+
+export fn method(request) : string {
+    return native.method(request);
+};
+
+export fn path(request) : string {
+    return native.path(request);
+};
+
+export fn body(request) : string {
+    return native.body(request);
+};
+
+export fn header(request, name: string) : string {
+    return native.header(request, name);
+};
+
+export fn path_segments(request) : [string] {
+    return text.split(path(request), "/");
+};
+
+export fn segment(request, index: int) : string {
+    return path_segments(request)[index];
+};
+
+export fn path_has_prefix(request, prefix: string) : bool {
+    return text.starts_with(path(request), prefix);
+};
+
+export fn path_suffix_after_prefix(request, prefix: string) : string {
+    var request_path = path(request);
+    var prefix_len = text.len(prefix);
+    if (!text.starts_with(request_path, prefix) || text.len(request_path) <= prefix_len) {
+        return "";
+    }
+
+    var suffix = text.slice(request_path, prefix_len, text.len(request_path) - prefix_len);
+    if (text.contains(suffix, "/")) {
+        return "";
+    }
+
+    return suffix;
+};
+
+export fn route_equals(request, expected_method: string, expected_path: string) : bool {
+    return method(request) == expected_method && path(request) == expected_path;
+};
+
+export fn ok_json(body_json: string) : string {
+    return raw.ok_json(body_json);
+};
+
+export fn created_json(body_json: string) : string {
+    return raw.json(201, body_json);
+};
+
+export fn json(status: int, body_json: string) : string {
+    return raw.json(status, body_json);
+};
+
+export fn response_with_headers(
+    status: int,
+    content_type: string,
+    body_value: string,
+    headers: [string]) : string {
+    return raw.response_with_headers(status, content_type, body_value, headers);
+};
+
+export fn text(status: int, body_value: string) : string {
+    return raw.text(status, body_value);
+};
+
+export fn not_found(message: string) : string {
+    return raw.text(404, message);
+};
+
+export fn bad_request(message: string) : string {
+    return raw.text(400, message);
+};
+
+export fn redirect(location: string) : string {
+    return raw.redirect(location);
+};

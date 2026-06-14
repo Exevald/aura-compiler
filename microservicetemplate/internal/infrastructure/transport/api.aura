@@ -1,0 +1,241 @@
+module microservicetemplate.internal.infrastructure.transport.api;
+
+import std.array as array;
+import std.json as json;
+import std.option as option;
+import std.result as result;
+import std.service as service;
+import std.http.server as server;
+import std.text as text;
+
+import microservicetemplate.internal.app.context.request_context as appctx;
+import microservicetemplate.internal.app.service.auth.task as taskauth;
+import microservicetemplate.internal.app.service.task_cache as taskcache;
+import microservicetemplate.internal.domain.model.task as domaintask;
+import microservicetemplate.internal.infrastructure.auth.jwt_token_parser as jwt;
+
+var task_service: taskauth.AuthorizedTaskAppService;
+var token_parser: jwt.JwtTokenParser;
+var list_cache: taskcache.TaskCache;
+var readiness_store;
+var dev_token: string;
+
+fn task_list_json(tasks: [domaintask.Task]) : string {
+    var body = "[";
+    var first = true;
+    iter (item of tasks) {
+        if (!first) {
+            body = body + ",";
+        }
+        body = body + domaintask.task_json(item);
+        first = false;
+    }
+    body = body + "]";
+    return body;
+};
+
+fn parse_task_body(request_body: string) : option.Option<[string]> {
+    if (!json.is_valid(request_body)) {
+        return option.None();
+    }
+    if (!json.has_key(request_body, "title") or !json.has_key(request_body, "description") or !json.has_key(request_body, "status")) {
+        return option.None();
+    }
+
+    return option.Some([
+        json.get_string(request_body, "title"),
+        json.get_string(request_body, "description"),
+        json.get_string(request_body, "status")
+    ]);
+};
+
+fn task_id_from_request(request: [string]) : option.Option<int> {
+    var suffix = server.path_suffix_after_prefix(request, "/api/v1/tasks/");
+    if (suffix == "") {
+        return option.None();
+    }
+    return option.Some(text.to_int(suffix));
+};
+
+fn cors_headers() : [string] {
+    return [
+        "Access-Control-Allow-Origin: *",
+        "Access-Control-Allow-Headers: Authorization, Content-Type",
+        "Access-Control-Allow-Methods: GET,POST,PUT,DELETE,OPTIONS"
+    ];
+};
+
+fn json_response(status: int, body_json: string) : string {
+    return server.response_with_headers(status, "application/json", body_json, cors_headers());
+};
+
+fn text_response(status: int, content_type: string, body: string) : string {
+    return server.response_with_headers(status, content_type, body, cors_headers());
+};
+
+fn ready_response() : string {
+    const status = service.store_get(readiness_store, "status");
+    if (status == "ready") {
+        return json_response(200, json.object([
+            json.field("ready", json.encode_bool(true))
+        ]));
+    }
+    return json_response(503, json.object([
+        json.field("ready", json.encode_bool(false))
+    ]));
+};
+
+fn strip_prefix(value: string, prefix: string) : string {
+    return text.slice(value, text.len(prefix), text.len(value) - text.len(prefix));
+};
+
+fn error_response(message: string) : string {
+    if (text.starts_with(message, "unauthorized:")) {
+        return text_response(401, "text/plain", strip_prefix(message, "unauthorized:"));
+    }
+    if (text.starts_with(message, "validation:")) {
+        return text_response(422, "text/plain", strip_prefix(message, "validation:"));
+    }
+    if (text.starts_with(message, "not_found:")) {
+        return text_response(404, "text/plain", strip_prefix(message, "not_found:"));
+    }
+    return text_response(500, "text/plain", message);
+};
+
+fn authenticate(request) : result.Result<appctx.RequestContext, string> {
+    var token = token_parser.parse_bearer(server.header(request, "authorization"));
+    if (token.tag != 0) {
+        return result.Err(token[0]);
+    }
+    return result.Ok(appctx.with_token(token[0]));
+};
+
+export fn init(
+    service_value: taskauth.AuthorizedTaskAppService,
+    parser: jwt.JwtTokenParser,
+    cache_value: taskcache.TaskCache,
+    readiness) : void {
+    task_service = service_value;
+    token_parser = parser;
+    list_cache = cache_value;
+    readiness_store = readiness;
+    dev_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZW1vIn0.0M9FivBe5PZZ0yYavEkiqL3rKEoue2qXKPRabCn6Png";
+};
+
+export fn route(request: [string]) : string {
+    if (server.method(request) == "OPTIONS") {
+        return text_response(200, "text/plain", "");
+    }
+
+    if (server.route_equals(request, "GET", "/")) {
+        return server.redirect("http://127.0.0.1:8084/");
+    }
+
+    if (server.route_equals(request, "GET", "/healthz")) {
+        return json_response(200, json.object([
+            json.field("ok", json.encode_bool(true))
+        ]));
+    }
+
+    if (server.route_equals(request, "GET", "/readyz")) {
+        return ready_response();
+    }
+
+    if (server.route_equals(request, "POST", "/api/dev/token")) {
+        return json_response(200, json.object([
+            json.field("token", json.encode_string(dev_token))
+        ]));
+    }
+
+    if (server.route_equals(request, "GET", "/api/v1/tasks")) {
+        var auth = authenticate(request);
+        if (auth.tag != 0) {
+            return error_response(auth[0]);
+        }
+        var owner_user_id = appctx.user_id(auth[0]);
+        var cached_json = list_cache.list_json(owner_user_id);
+        if (cached_json != "") {
+            return json_response(200, cached_json);
+        }
+        var listed = task_service.list(auth[0]);
+        if (listed.tag != 0) {
+            return error_response(listed[0]);
+        }
+        var response_json = task_list_json(listed[0]);
+        list_cache.store_list(owner_user_id, response_json);
+        list_cache.ping();
+        return json_response(200, response_json);
+    }
+
+    if (server.path_has_prefix(request, "/api/v1/tasks/") && server.method(request) == "GET") {
+        var maybe_id = task_id_from_request(request);
+        if (maybe_id.tag != 0) {
+            return server.bad_request("invalid task id");
+        }
+        var auth = authenticate(request);
+        if (auth.tag != 0) {
+            return error_response(auth[0]);
+        }
+        var found = task_service.get(auth[0], maybe_id[0]);
+        if (found.tag != 0) {
+            return error_response(found[0]);
+        }
+        return json_response(200, domaintask.task_json(found[0]));
+    }
+
+    if (server.route_equals(request, "POST", "/api/v1/tasks")) {
+        var auth = authenticate(request);
+        if (auth.tag != 0) {
+            return error_response(auth[0]);
+        }
+        var payload = parse_task_body(server.body(request));
+        if (payload.tag != 0) {
+            return server.bad_request("invalid json body");
+        }
+        var created = task_service.create(auth[0], payload[0][0], payload[0][1], payload[0][2]);
+        if (created.tag != 0) {
+            return error_response(created[0]);
+        }
+        return json_response(201, domaintask.task_json(created[0]));
+    }
+
+    if (server.path_has_prefix(request, "/api/v1/tasks/") && server.method(request) == "PUT") {
+        var maybe_id = task_id_from_request(request);
+        if (maybe_id.tag != 0) {
+            return server.bad_request("invalid task id");
+        }
+        var auth = authenticate(request);
+        if (auth.tag != 0) {
+            return error_response(auth[0]);
+        }
+        var payload = parse_task_body(server.body(request));
+        if (payload.tag != 0) {
+            return server.bad_request("invalid json body");
+        }
+        var updated = task_service.update(auth[0], maybe_id[0], payload[0][0], payload[0][1], payload[0][2]);
+        if (updated.tag != 0) {
+            return error_response(updated[0]);
+        }
+        return json_response(200, domaintask.task_json(updated[0]));
+    }
+
+    if (server.path_has_prefix(request, "/api/v1/tasks/") && server.method(request) == "DELETE") {
+        var maybe_id = task_id_from_request(request);
+        if (maybe_id.tag != 0) {
+            return server.bad_request("invalid task id");
+        }
+        var auth = authenticate(request);
+        if (auth.tag != 0) {
+            return error_response(auth[0]);
+        }
+        var deleted = task_service.delete(auth[0], maybe_id[0]);
+        if (deleted.tag != 0) {
+            return error_response(deleted[0]);
+        }
+        return json_response(200, json.object([
+            json.field("deleted", json.encode_bool(true))
+        ]));
+    }
+
+    return text_response(404, "text/plain", "missing");
+};

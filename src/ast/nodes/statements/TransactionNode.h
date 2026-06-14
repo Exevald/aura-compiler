@@ -4,17 +4,22 @@
 #include "core/ASTVisitor.h"
 
 #include <string>
+#include <vector>
 
 class TransactionNode : public ASTNode
 {
 public:
-	bool usesSharedRegion = false;
-	std::string regionName;
+	struct Region
+	{
+		bool usesShared = false;
+		std::string name;
+	};
+
+	std::vector<Region> regions;
 	ASTNodePtr body;
 
-	TransactionNode(bool sharedRegion, std::string name, ASTNodePtr transactionBody)
-		: usesSharedRegion(sharedRegion)
-		, regionName(std::move(name))
+	TransactionNode(std::vector<Region> transactionRegions, ASTNodePtr transactionBody)
+		: regions(std::move(transactionRegions))
 		, body(std::move(transactionBody))
 	{
 	}

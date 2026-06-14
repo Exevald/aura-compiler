@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: microservicetemplate-app-config
+  namespace: aura-microservicetemplate
+data:
+  HOST: "0.0.0.0"
+  PORT: "8082"
+  MYSQL_POOL_SIZE: "4"
+  READ_TIMEOUT_MS: "1000"
+  WRITE_TIMEOUT_MS: "1000"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: microservicetemplate-app-secret
+  namespace: aura-microservicetemplate
+type: Opaque
+stringData:
+  MYSQL_DSN: "host=microservicetemplate-mysql;port=3306;user=aura;password=aura;database=microservicetemplate"
+  AUTH_JWT_SECRET: "change-me"

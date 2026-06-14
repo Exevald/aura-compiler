@@ -1,9 +1,52 @@
+#include "../../ast/common/SemanticAnalyzerSupport.h"
 #include "../BytecodeGenerator.h"
 
+#include <algorithm>
 #include <memory>
 #include <ranges>
+#include <stdexcept>
 
+using SemanticAnalyzerDetail::SplitGenericName;
+using SemanticAnalyzerDetail::SubstituteTypeString;
 using namespace VM::Core;
+
+namespace
+{
+std::string GenericBaseName(const std::string& name)
+{
+	if (const auto pos = name.find('<'); pos != std::string::npos)
+	{
+		return name.substr(0, pos);
+	}
+	return name;
+}
+
+std::string InstantiateGenericTypeName(
+	const std::unordered_map<std::string, std::vector<std::string>>& structTypeParams,
+	const std::string& ownerType,
+	const std::string& templateType)
+{
+	std::string baseName;
+	std::vector<std::string> typeArgs;
+	if (!SplitGenericName(ownerType, baseName, typeArgs))
+	{
+		return templateType;
+	}
+
+	const auto paramsIt = structTypeParams.find(baseName);
+	if (paramsIt == structTypeParams.end() || paramsIt->second.size() != typeArgs.size())
+	{
+		return templateType;
+	}
+
+	std::unordered_map<std::string, std::string> replacements;
+	for (size_t i = 0; i < typeArgs.size(); ++i)
+	{
+		replacements[paramsIt->second[i]] = typeArgs[i];
+	}
+	return SubstituteTypeString(templateType, replacements);
+}
+} // namespace
 
 std::optional<uint8_t> BytecodeGenerator::ResolveStructFieldIndex(const ASTNode* object, const std::string& member) const
 {
@@ -119,14 +162,9 @@ std::optional<std::string> BytecodeGenerator::MetadataResolver::InferStructTypeN
 
 	if (const auto* identifier = dynamic_cast<const IdentifierNode*>(node))
 	{
-		const std::string qualifiedName = generator.QualifyName(identifier->name);
-		if (generator.m_metadata.structLayouts.contains(qualifiedName))
+		if (const auto qualifiedName = const_cast<BytecodeGenerator&>(generator).EnsureStructMetadata(identifier->name))
 		{
-			return qualifiedName;
-		}
-		if (generator.m_metadata.structLayouts.contains(identifier->name))
-		{
-			return identifier->name;
+			return *qualifiedName;
 		}
 		return ResolveStructVariableType(identifier->name);
 	}
@@ -142,9 +180,9 @@ std::optional<std::string> BytecodeGenerator::MetadataResolver::InferStructTypeN
 					aliasIt != generator.m_metadata.importAliases.end())
 				{
 					if (const std::string qualifiedName = aliasIt->second + "." + memberAccess->member;
-						generator.m_metadata.structLayouts.contains(qualifiedName))
+						const auto resolved = const_cast<BytecodeGenerator&>(generator).EnsureStructMetadata(qualifiedName))
 					{
-						return qualifiedName;
+						return *resolved;
 					}
 				}
 			}
@@ -163,14 +201,13 @@ std::optional<std::string> BytecodeGenerator::MetadataResolver::InferStructTypeN
 			return std::nullopt;
 		}
 
-		const std::string qualifiedFieldType = generator.QualifyName(fieldTypeIt->second);
-		if (generator.m_metadata.structLayouts.contains(qualifiedFieldType))
+		const std::string instantiatedFieldType = InstantiateGenericTypeName(
+			generator.m_metadata.structTypeParams,
+			*parentStructType,
+			fieldTypeIt->second);
+		if (const auto resolvedFieldType = const_cast<BytecodeGenerator&>(generator).EnsureStructMetadata(instantiatedFieldType))
 		{
-			return qualifiedFieldType;
-		}
-		if (generator.m_metadata.structLayouts.contains(fieldTypeIt->second))
-		{
-			return fieldTypeIt->second;
+			return *resolvedFieldType;
 		}
 		return std::nullopt;
 	}
@@ -179,14 +216,9 @@ std::optional<std::string> BytecodeGenerator::MetadataResolver::InferStructTypeN
 	{
 		if (const auto* calleeIdentifier = dynamic_cast<const IdentifierNode*>(call->callee.get()))
 		{
-			const std::string qualifiedName = generator.QualifyName(calleeIdentifier->name);
-			if (generator.m_metadata.structLayouts.contains(qualifiedName))
+			if (const auto resolved = const_cast<BytecodeGenerator&>(generator).EnsureStructMetadata(calleeIdentifier->name))
 			{
-				return qualifiedName;
-			}
-			if (generator.m_metadata.structLayouts.contains(calleeIdentifier->name))
-			{
-				return calleeIdentifier->name;
+				return *resolved;
 			}
 		}
 
@@ -198,9 +230,9 @@ std::optional<std::string> BytecodeGenerator::MetadataResolver::InferStructTypeN
 					aliasIt != generator.m_metadata.importAliases.end())
 				{
 					const std::string qualifiedName = aliasIt->second + "." + memberAccess->member;
-					if (generator.m_metadata.structLayouts.contains(qualifiedName))
+					if (const auto resolved = const_cast<BytecodeGenerator&>(generator).EnsureStructMetadata(qualifiedName))
 					{
-						return qualifiedName;
+						return *resolved;
 					}
 				}
 			}
@@ -234,14 +266,10 @@ std::optional<std::string> BytecodeGenerator::MetadataResolver::InferActorTypeNa
 
 	if (const auto* identifier = dynamic_cast<const IdentifierNode*>(node))
 	{
-		const std::string qualifiedName = generator.QualifyName(identifier->name);
-		if (generator.m_metadata.actorLayouts.contains(qualifiedName))
+		if (const auto qualifiedName = const_cast<BytecodeGenerator&>(generator)
+			.EnsureActorMetadata(identifier->name))
 		{
-			return qualifiedName;
-		}
-		if (generator.m_metadata.actorLayouts.contains(identifier->name))
-		{
-			return identifier->name;
+			return *qualifiedName;
 		}
 		return ResolveActorVariableType(identifier->name);
 	}
@@ -250,14 +278,10 @@ std::optional<std::string> BytecodeGenerator::MetadataResolver::InferActorTypeNa
 	{
 		if (const auto* calleeIdentifier = dynamic_cast<const IdentifierNode*>(call->callee.get()))
 		{
-			const std::string qualifiedName = generator.QualifyName(calleeIdentifier->name);
-			if (generator.m_metadata.actorLayouts.contains(qualifiedName))
+			if (const auto qualifiedName = const_cast<BytecodeGenerator&>(generator)
+					.EnsureActorMetadata(calleeIdentifier->name))
 			{
-				return qualifiedName;
-			}
-			if (generator.m_metadata.actorLayouts.contains(calleeIdentifier->name))
-			{
-				return calleeIdentifier->name;
+				return *qualifiedName;
 			}
 		}
 	}
@@ -265,11 +289,14 @@ std::optional<std::string> BytecodeGenerator::MetadataResolver::InferActorTypeNa
 	return std::nullopt;
 }
 
-std::optional<std::string> BytecodeGenerator::MetadataResolver::ResolveActorVariableType(const std::string& name) const
+std::optional<std::string> BytecodeGenerator::MetadataResolver::ResolveActorVariableType(
+	const std::string& name) const
 {
 	for (auto contextIt = generator.m_contexts.rbegin(); contextIt != generator.m_contexts.rend(); ++contextIt)
 	{
-		for (auto scopeIt = contextIt->actorVarScopes.rbegin(); scopeIt != contextIt->actorVarScopes.rend(); ++scopeIt)
+		for (auto scopeIt = contextIt->actorVarScopes.rbegin();
+			scopeIt != contextIt->actorVarScopes.rend();
+			++scopeIt)
 		{
 			if (const auto it = scopeIt->find(name); it != scopeIt->end())
 			{
@@ -282,6 +309,28 @@ std::optional<std::string> BytecodeGenerator::MetadataResolver::ResolveActorVari
 
 std::optional<std::string> BytecodeGenerator::MetadataResolver::InferEnumTypeName(const ASTNode* node) const
 {
+	auto normalizeEnumType = [&](std::string typeName) -> std::optional<std::string> {
+		if (typeName.empty())
+		{
+			return std::nullopt;
+		}
+		typeName = BytecodeGenerator::NormalizeImportedTypeName(generator.m_metadata.importAliases, typeName);
+		std::string enumBase;
+		std::vector<std::string> genericArgs;
+		if (SplitGenericName(typeName, enumBase, genericArgs))
+		{
+			typeName = enumBase;
+		}
+		for (const auto& [_, variantInfo] : generator.m_metadata.enumVariants)
+		{
+			if (variantInfo.enumName == typeName)
+			{
+				return typeName;
+			}
+		}
+		return std::nullopt;
+	};
+
 	if (!node)
 	{
 		return std::nullopt;
@@ -294,26 +343,54 @@ std::optional<std::string> BytecodeGenerator::MetadataResolver::InferEnumTypeNam
 
 	if (const auto* call = dynamic_cast<const CallNode*>(node))
 	{
+		auto inferFromSignature = [&](const std::string& calleeName) -> std::optional<std::string> {
+			if (const auto signatureIt = generator.m_metadata.functionSignatures.find(calleeName);
+				signatureIt != generator.m_metadata.functionSignatures.end())
+			{
+				return normalizeEnumType(signatureIt->second.returnTypeName);
+			}
+			return std::nullopt;
+		};
+
 		if (const auto* calleeIdentifier = dynamic_cast<const IdentifierNode*>(call->callee.get()))
 		{
-			if (const auto it = generator.m_metadata.enumVariants.find(generator.QualifyName(calleeIdentifier->name));
+			if (const auto it = generator.m_metadata.enumVariants.find(
+					generator.QualifyName(calleeIdentifier->name));
 				it != generator.m_metadata.enumVariants.end())
 			{
 				return it->second.enumName;
+			}
+			if (const auto fromSignature = inferFromSignature(generator.QualifyName(calleeIdentifier->name)))
+			{
+				return fromSignature;
 			}
 		}
 
 		if (const auto* memberAccess = dynamic_cast<const MemberAccessNode*>(call->callee.get()))
 		{
+			if (const auto hiddenMethod = ResolveStructMethod(
+					memberAccess->object.get(),
+					memberAccess->member))
+			{
+				if (const auto fromSignature = inferFromSignature(*hiddenMethod))
+				{
+					return fromSignature;
+				}
+			}
 			if (const auto* moduleIdentifier = dynamic_cast<const IdentifierNode*>(memberAccess->object.get()))
 			{
 				if (const auto aliasIt = generator.m_metadata.importAliases.find(moduleIdentifier->name);
 					aliasIt != generator.m_metadata.importAliases.end())
 				{
-					if (const auto it = generator.m_metadata.enumVariants.find(aliasIt->second + "." + memberAccess->member);
+					if (const auto it = generator.m_metadata.enumVariants.find(
+							aliasIt->second + "." + memberAccess->member);
 						it != generator.m_metadata.enumVariants.end())
 					{
 						return it->second.enumName;
+					}
+					if (const auto fromSignature = inferFromSignature(aliasIt->second + "." + memberAccess->member))
+					{
+						return fromSignature;
 					}
 				}
 			}
@@ -363,13 +440,10 @@ std::optional<BytecodeGenerator::FunctionContext::InterfaceBinding> BytecodeGene
 		{
 			return {};
 		}
-		if (generator.m_metadata.interfaceMethods.contains(generator.QualifyName(typeName)))
+		if (const auto resolved = const_cast<BytecodeGenerator&>(generator)
+				.EnsureInterfaceMetadata(typeName))
 		{
-			return generator.QualifyName(typeName);
-		}
-		if (generator.m_metadata.interfaceMethods.contains(typeName))
-		{
-			return typeName;
+			return *resolved;
 		}
 		return {};
 	};
@@ -388,19 +462,6 @@ std::optional<BytecodeGenerator::FunctionContext::InterfaceBinding> BytecodeGene
 		return std::nullopt;
 	}
 
-	if (dynamic_cast<const FunctionExprNode*>(node))
-	{
-		if (!interfaceName.empty())
-		{
-			return FunctionContext::InterfaceBinding{
-				interfaceName,
-				"",
-				FunctionContext::InterfaceBinding::RuntimeKind::Function
-			};
-		}
-		return std::nullopt;
-	}
-
 	if (const auto* identifier = dynamic_cast<const IdentifierNode*>(node))
 	{
 		if (const auto binding = ResolveInterfaceBinding(identifier->name))
@@ -410,15 +471,6 @@ std::optional<BytecodeGenerator::FunctionContext::InterfaceBinding> BytecodeGene
 
 		if (!interfaceName.empty())
 		{
-			if (generator.m_metadata.importAliases.contains(identifier->name))
-			{
-				return FunctionContext::InterfaceBinding{
-					interfaceName,
-					"",
-					FunctionContext::InterfaceBinding::RuntimeKind::Module
-				};
-			}
-
 			if (const auto structType = ResolveStructVariableType(identifier->name))
 			{
 				return FunctionContext::InterfaceBinding{
@@ -427,12 +479,6 @@ std::optional<BytecodeGenerator::FunctionContext::InterfaceBinding> BytecodeGene
 					FunctionContext::InterfaceBinding::RuntimeKind::Struct
 				};
 			}
-
-			return FunctionContext::InterfaceBinding{
-				interfaceName,
-				"",
-				FunctionContext::InterfaceBinding::RuntimeKind::Function
-			};
 		}
 	}
 
@@ -451,30 +497,18 @@ std::optional<BytecodeGenerator::FunctionContext::InterfaceBinding> BytecodeGene
 	return std::nullopt;
 }
 
-bool BytecodeGenerator::MetadataResolver::IsFunctionBackedInterfaceMethod(const ASTNode* object, const std::string& member) const
+bool BytecodeGenerator::MetadataResolver::IsFunctionBackedInterfaceMethod(
+	const ASTNode* object,
+	const std::string& member) const
 {
-	const auto* identifier = dynamic_cast<const IdentifierNode*>(object);
-	if (!identifier)
-	{
-		return false;
-	}
-
-	const auto binding = ResolveInterfaceBinding(identifier->name);
-	if (!binding || binding->runtimeKind != FunctionContext::InterfaceBinding::RuntimeKind::Function)
-	{
-		return false;
-	}
-
-	const auto methodsIt = generator.m_metadata.interfaceMethods.find(binding->interfaceName);
-	if (methodsIt == generator.m_metadata.interfaceMethods.end() || methodsIt->second.size() != 1)
-	{
-		return false;
-	}
-
-	return methodsIt->second.front() == member;
+	(void)object;
+	(void)member;
+	return false;
 }
 
-std::optional<std::string> BytecodeGenerator::MetadataResolver::ResolveStructMethod(const ASTNode* object, const std::string& member) const
+std::optional<std::string> BytecodeGenerator::MetadataResolver::ResolveStructMethod(
+	const ASTNode* object,
+	const std::string& member) const
 {
 	if (const auto structType = InferStructTypeName(object))
 	{
@@ -510,12 +544,14 @@ std::optional<std::string> BytecodeGenerator::MetadataResolver::ResolveStructMet
 	return std::nullopt;
 }
 
-std::optional<std::string> BytecodeGenerator::MetadataResolver::ResolveActorMethod(const ASTNode* object, const std::string& member) const
+std::optional<std::string> BytecodeGenerator::MetadataResolver::ResolveActorMethod(
+	const ASTNode* object,
+	const std::string& member) const
 {
 	if (const auto actorType = InferActorTypeName(object))
 	{
-		if (const auto it = generator.m_metadata.actorMethodNames.find(*actorType);
-			it != generator.m_metadata.actorMethodNames.end())
+		auto it = generator.m_metadata.actorMethodNames.find(*actorType);
+		if (it != generator.m_metadata.actorMethodNames.end())
 		{
 			if (const auto methodIt = it->second.find(member); methodIt != it->second.end())
 			{
@@ -531,8 +567,8 @@ bool BytecodeGenerator::MetadataResolver::IsActorQueryMethod(const ASTNode* obje
 {
 	if (const auto actorType = InferActorTypeName(object))
 	{
-		if (const auto it = generator.m_metadata.actorMethodIsQuery.find(*actorType);
-			it != generator.m_metadata.actorMethodIsQuery.end())
+		auto it = generator.m_metadata.actorMethodIsQuery.find(*actorType);
+		if (it != generator.m_metadata.actorMethodIsQuery.end())
 		{
 			if (const auto methodIt = it->second.find(member); methodIt != it->second.end())
 			{
@@ -586,12 +622,34 @@ std::optional<std::string> BytecodeGenerator::MetadataResolver::ResolveEffectOpe
 		return std::nullopt;
 	}
 
-	for (const auto& operations : generator.m_metadata.effectOperations | std::views::values)
-	{
-		if (operations.contains(identifier->name))
+	std::vector<std::string> candidates;
+	auto collectMatches = [&](const auto& scopeStack) {
+		for (auto activeIt = scopeStack.rbegin(); activeIt != scopeStack.rend(); ++activeIt)
 		{
-			return identifier->name;
+			for (const auto& effectName : *activeIt)
+			{
+				if (const auto operationsIt = generator.m_metadata.effectOperations.find(effectName);
+					operationsIt != generator.m_metadata.effectOperations.end()
+					&& operationsIt->second.contains(identifier->name))
+				{
+					candidates.push_back(effectName + "." + identifier->name);
+				}
+			}
 		}
+	};
+
+	collectMatches(generator.m_activeRaisedEffects);
+	collectMatches(generator.m_activeHandledEffects);
+
+	std::ranges::sort(candidates);
+	candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+	if (candidates.size() == 1)
+	{
+		return candidates.front();
+	}
+	if (candidates.size() > 1)
+	{
+		throw std::runtime_error("Ambiguous effect operation for codegen: " + identifier->name);
 	}
 	return std::nullopt;
 }

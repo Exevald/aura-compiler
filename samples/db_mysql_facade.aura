@@ -1,0 +1,16 @@
+module samples.db_mysql_facade;
+
+import std.db.mysql as db;
+import std.io as io;
+
+fn run() : void {
+    var dsn = "host=127.0.0.1;user=root;database=app";
+    var pool = db.open_pool(dsn, 4);
+    var result = db.exec_stmt(pool, "insert into audit_log(service, status) values(?, ?)", ["aura", "ok"]);
+    io.println("affected", db.affected_rows(result));
+    var row = db.query_one(pool, "select status from audit_log where service = ?", ["aura"]);
+    io.println("status", db.get(row, "status"));
+    db.close(pool);
+}
+
+run();

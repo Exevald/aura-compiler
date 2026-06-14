@@ -3,10 +3,12 @@
 #include "../core/values/Value.h"
 #include "SharedRuntime.h"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace VM::Execution
@@ -24,9 +26,9 @@ struct CallFrame
 	CallFrame(
 		Core::FunctionPtr func,
 		Core::ClosurePtr activeClosure,
-		size_t base,
-		size_t transactionBaseIndex = 0,
-		size_t handlerBaseIndex = 0)
+		const size_t base,
+		const size_t transactionBaseIndex = 0,
+		const size_t handlerBaseIndex = 0)
 		: function(std::move(func))
 		, closure(std::move(activeClosure))
 		, stackBase(base)
@@ -40,9 +42,9 @@ class Scope
 {
 public:
 	using VariableMap = std::map<std::string, Core::Value>;
-	std::shared_ptr<Scope> parent;
-	VariableMap variables;
-	bool isFunctionScope{ false };
+	std::shared_ptr<Scope> m_parent;
+	VariableMap m_variables;
+	bool m_isFunctionScope{ false };
 
 	void SetVariable(std::string name, Core::Value value);
 	Core::Value* GetVariable(const std::string& name);
@@ -54,9 +56,13 @@ class ExecutionContext
 public:
 	using AllocationStats = Runtime::SharedRuntime::AllocationStats;
 	using SyncStats = Runtime::SharedRuntime::SyncStats;
+	using CallableInvoker = std::function<
+		std::optional<std::string>(const Core::Value&, const std::vector<Core::Value>&, Core::Value&)>;
 
 	ExecutionContext();
-	explicit ExecutionContext(std::shared_ptr<Runtime::SharedRuntime> runtime, bool useMainThread = true);
+	explicit ExecutionContext(
+		std::shared_ptr<Runtime::SharedRuntime> runtime,
+		bool useMainThread = true);
 	~ExecutionContext();
 
 	void PushValue(const Core::Value& value);
@@ -71,9 +77,12 @@ public:
 	const Core::Value& GetAt(size_t index) const;
 	const Core::Value& Peek(size_t distance = 0) const;
 
-	void DefineGlobal(const std::string& name, Core::Value val);
+	void DefineGlobal(const std::string& name, Core::Value val) const;
 	bool GetGlobal(const std::string& name, Core::Value& outValue) const;
 	bool SetGlobal(const std::string& name, Core::Value val) const;
+	void DefineThreadLocalGlobal(const std::string& name, Core::Value val);
+	bool GetThreadLocalGlobal(const std::string& name, Core::Value& outValue) const;
+	bool SetThreadLocalGlobal(const std::string& name, Core::Value val);
 	[[nodiscard]] Runtime::SharedRuntime& GetRuntime() { return *m_runtime; }
 	[[nodiscard]] const Runtime::SharedRuntime& GetRuntime() const { return *m_runtime; }
 	[[nodiscard]] std::shared_ptr<Runtime::SharedRuntime> GetSharedRuntime() const { return m_runtime; }
@@ -100,7 +109,7 @@ public:
 	std::string_view GetError() const { return m_errorMessage; }
 	void ClearError();
 
-	void* Allocate(size_t size);
+	void* Allocate(size_t size) const;
 	bool Release(const void* ptr) const;
 	[[nodiscard]] const AllocationStats& GetAllocationStats() const;
 	[[nodiscard]] const SyncStats& GetSyncStats() const;
@@ -117,8 +126,25 @@ public:
 	[[nodiscard]] bool IsMutexLocked(size_t mutexId) const;
 	[[nodiscard]] std::optional<size_t> MutexOwner(size_t mutexId) const;
 	bool BeginTransaction(const Core::MutexPtr& mutex);
+	bool BeginTransaction(const std::vector<Core::MutexPtr>& mutexes);
 	bool EndTransaction();
 	void UnwindTransactions(size_t base);
+	bool GetArraySize(const Core::ArrayPtr& array, size_t& outSize) const;
+	bool GetArrayElement(const Core::ArrayPtr& array, size_t index, Core::Value& outValue) const;
+	bool SetArrayElement(const Core::ArrayPtr& array, size_t index, Core::Value value);
+	bool ReplaceArray(const Core::ArrayPtr& array, std::vector<Core::Value> elements);
+	bool PushArrayElement(const Core::ArrayPtr& array, Core::Value value);
+	bool PopArrayElement(const Core::ArrayPtr& array, Core::Value& outValue);
+	void RecordArrayWrite(
+		const Core::ArrayPtr& array,
+		size_t index,
+		const Core::Value& previousValue);
+	bool GetInstanceField(const Core::InstancePtr& instance, size_t index, Core::Value& outValue) const;
+	bool SetInstanceField(const Core::InstancePtr& instance, size_t index, Core::Value value);
+	void RecordInstanceFieldWrite(
+		const Core::InstancePtr& instance,
+		size_t index,
+		const Core::Value& previousValue);
 	void PushHandlerMap(const Core::HandlerMapPtr& handlerMap);
 	bool PopHandlerMap();
 	void UnwindHandlers(size_t base);
@@ -127,13 +153,32 @@ public:
 	[[nodiscard]] size_t ActiveHandlerCount() const { return m_handlerStack.size(); }
 	void UnwindAllTransactions();
 	void ClearHandlers();
+	void SetCallableInvoker(CallableInvoker invoker);
+	[[nodiscard]] std::optional<std::string> InvokeCallable(
+		const Core::Value& callee,
+		const std::vector<Core::Value>& args,
+		Core::Value& result) const;
 
 	void PrintStack() const;
 
 private:
 	struct ActiveTransaction
 	{
-		size_t mutexId = 0;
+		std::vector<size_t> mutexIds;
+		std::vector<size_t> acquiredMutexIds;
+		struct RollbackEntry
+		{
+			std::function<void()> restore;
+		};
+		std::vector<RollbackEntry> rollbacks;
+		std::unordered_map<std::string, Core::Value> priorGlobals;
+		std::unordered_map<std::string, Core::Value> pendingGlobals;
+		std::unordered_map<std::string, Core::Value> priorThreadLocals;
+		std::unordered_map<std::string, Core::Value> pendingThreadLocals;
+		std::unordered_map<const void*, std::vector<Core::Value>> priorArrayValues;
+		std::unordered_map<const void*, std::vector<Core::Value>> pendingArrayValues;
+		std::unordered_map<const void*, std::unordered_map<size_t, Core::Value>> priorInstanceValues;
+		std::unordered_map<const void*, std::unordered_map<size_t, Core::Value>> pendingInstanceValues;
 	};
 
 	std::vector<Core::Value> m_valueStack;
@@ -145,6 +190,8 @@ private:
 	std::vector<Core::HandlerMapPtr> m_handlerStack;
 	size_t m_currentThreadId = 0;
 	bool m_ownsThreadHandle = false;
+	std::unordered_map<std::string, Core::Value> m_threadLocalGlobals;
+	CallableInvoker m_callableInvoker;
 
 	static constexpr size_t STACK_MAX = 4096;
 	static constexpr size_t FRAMES_MAX = 64;

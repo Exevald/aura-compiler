@@ -1,0 +1,24 @@
+import "./chat_query_repo.stas"
+
+schema GetHistoryFlow
+{
+    state Init() {
+        func execute(ChatQueryRepo<Ready> repo, Database<Connected> db) -> Completed
+    }
+
+    state Completed(string historyJson, ChatQueryRepo<Ready> repo, Database<Connected> db) {}
+}
+
+impl GetHistoryFlow<Init>
+{
+    public func execute(ChatQueryRepo<Ready> repo, Database<Connected> db) -> GetHistoryFlow<Completed> {
+
+        let ChatQueryRepo<Fetched> repoRes = repo.fetchHistory(db);
+
+        let string historyJson = repoRes.jsonResult;
+        let Database<Connected> returnedDb = repoRes.db;
+        let ChatQueryRepo<Ready> readyRepo = repoRes.reset();
+
+        return new GetHistoryFlow<Completed>(historyJson, readyRepo, returnedDb);
+    }
+}

@@ -1,0 +1,7 @@
+module std.base64;
+
+import std.base64_native as native;
+
+export fn try_url_decode(value: string) : [any] {
+    return native.try_url_decode(value);
+};

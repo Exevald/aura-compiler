@@ -1,0 +1,15 @@
+module std.time;
+
+import std.time_native as native;
+
+export fn now_millis() : int {
+    return native.now_millis();
+};
+
+export fn monotonic_nanos() : int {
+    return native.monotonic_nanos();
+};
+
+export fn sleep(millis: int) : void {
+    native.sleep(millis);
+};

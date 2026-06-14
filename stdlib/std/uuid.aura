@@ -1,0 +1,7 @@
+module std.uuid;
+
+import std.uuid_native as native;
+
+export fn new_v4() : string {
+    return native.new_v4();
+};

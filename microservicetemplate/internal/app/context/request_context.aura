@@ -1,0 +1,21 @@
+module microservicetemplate.internal.app.context.request_context;
+
+import microservicetemplate.internal.app.auth.token as appauth;
+
+struct RequestContext {
+    token: appauth.UserToken;
+}
+
+export RequestContext;
+
+export fn with_token(token: appauth.UserToken) : RequestContext {
+    return RequestContext(token);
+};
+
+export fn token(ctx: RequestContext) : appauth.UserToken {
+    return ctx.token;
+};
+
+export fn user_id(ctx: RequestContext) : string {
+    return appauth.user_id(token(ctx));
+};

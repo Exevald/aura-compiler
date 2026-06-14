@@ -1,0 +1,8 @@
+module std.result;
+
+export enum Result<T, E> {
+    Ok(T) | Err(E)
+};
+
+export Ok;
+export Err;

@@ -1,0 +1,19 @@
+module std.log;
+
+import std.log_native as native;
+
+export fn Error(...values: any) : void {
+    native.Error(values);
+};
+
+export fn Warn(...values: any) : void {
+    native.Warn(values);
+};
+
+export fn Info(...values: any) : void {
+    native.Info(values);
+};
+
+export fn Fatal(...values: any) : void {
+    native.Fatal(values);
+};

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FunctionDeclNode.h"
 #include "core/ASTNode.h"
 #include "core/ASTVisitor.h"
 
@@ -16,10 +17,15 @@ class EnumDeclNode : public ASTNode
 {
 public:
 	std::string name;
+	std::vector<TypeParameterDecl> typeParams;
 	std::vector<EnumVariantDecl> variants;
 
-	EnumDeclNode(std::string enumName, std::vector<EnumVariantDecl> enumVariants)
+	EnumDeclNode(
+		std::string enumName,
+		std::vector<TypeParameterDecl> genericParams,
+		std::vector<EnumVariantDecl> enumVariants)
 		: name(std::move(enumName))
+		, typeParams(std::move(genericParams))
 		, variants(std::move(enumVariants))
 	{
 	}

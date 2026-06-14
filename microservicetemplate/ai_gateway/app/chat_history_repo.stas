@@ -1,0 +1,13 @@
+import "../../bin/stl/modules/sql.stasm"
+import "./model.stas"
+
+schema ChatRepository
+{
+    state Ready() {
+        func saveMessage(Database<Connected> db, ChatMessage msg) -> Saved
+    }
+
+    state Saved(Database<Connected> db) {
+        func reset() -> Ready
+    }
+}

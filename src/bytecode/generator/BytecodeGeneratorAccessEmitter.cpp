@@ -5,6 +5,18 @@
 
 using namespace VM::Core;
 
+namespace
+{
+std::string GenericBaseName(const std::string& name)
+{
+	if (const auto pos = name.find('<'); pos != std::string::npos)
+	{
+		return name.substr(0, pos);
+	}
+	return name;
+}
+}
+
 void BytecodeGenerator::AccessEmitter::EmitCallArguments(
 	const std::vector<ASTNodePtr>& args,
 	const std::vector<bool>& refParams,
@@ -18,17 +30,38 @@ void BytecodeGenerator::AccessEmitter::EmitCallArguments(
 	}
 }
 
+void BytecodeGenerator::AccessEmitter::EmitContextArguments(const std::vector<std::string>& contextParams) const
+{
+	for (const auto& contextName : contextParams)
+	{
+		generator.EmitGetVariable(contextName);
+	}
+}
+
 bool BytecodeGenerator::AccessEmitter::TryEmitDirectTypeConstructorCall(const CallNode& node) const
 {
 	if (const auto* identifier = dynamic_cast<const IdentifierNode*>(node.callee.get()))
 	{
-		const std::string structName = generator.QualifyName(identifier->name);
-		if (const auto it = generator.m_metadata.structLayouts.find(structName);
-			it != generator.m_metadata.structLayouts.end())
+		if (const auto structName = generator.EnsureStructMetadata(identifier->name))
 		{
+			const auto it = generator.m_metadata.structLayouts.find(*structName);
 			EmitCallArguments(node.args);
 			generator.CurrentChunk().Write(OpCode::OP_BUILD_STRUCT);
 			generator.CurrentChunk().code.push_back(static_cast<uint8_t>(it->second.size()));
+			if (const auto invariantName = generator.m_metadata.structInvariantChecks.find(*structName);
+				invariantName != generator.m_metadata.structInvariantChecks.end())
+			{
+				const std::string hiddenInvariantName = invariantName->second;
+				generator.CurrentChunk().Write(OpCode::OP_DUP);
+				const uint16_t fnIndex = generator.CurrentChunk().AddConstant(
+					std::make_shared<const std::string>(hiddenInvariantName));
+				generator.CurrentChunk().Write(OpCode::OP_GET_GLOBAL);
+				generator.CurrentChunk().WriteOperand(OpCode::OP_GET_GLOBAL, fnIndex);
+				generator.CurrentChunk().Write(OpCode::OP_SWAP);
+				generator.CurrentChunk().Write(OpCode::OP_CALL);
+				generator.CurrentChunk().code.push_back(1);
+				generator.CurrentChunk().Write(OpCode::OP_POP);
+			}
 			return true;
 		}
 
@@ -42,15 +75,30 @@ bool BytecodeGenerator::AccessEmitter::TryEmitDirectTypeConstructorCall(const Ca
 			return true;
 		}
 
-		if (const auto it = generator.m_metadata.actorLayouts.find(structName);
-			it != generator.m_metadata.actorLayouts.end())
+		if (const auto actorName = generator.EnsureActorMetadata(identifier->name))
 		{
+			const auto actorIt = generator.m_metadata.actorLayouts.find(*actorName);
 			EmitCallArguments(node.args);
-			const uint8_t blueprintIndex = generator.CurrentChunk().AddConstant(
-				std::make_shared<const std::string>(structName));
+			if (const auto defaultsIt = generator.m_metadata.actorFieldDefaults.find(*actorName);
+				defaultsIt != generator.m_metadata.actorFieldDefaults.end())
+			{
+				for (size_t i = node.args.size(); i < defaultsIt->second.size(); ++i)
+				{
+					if (defaultsIt->second[i])
+					{
+						defaultsIt->second[i]->Accept(generator);
+					}
+					else
+					{
+						generator.CurrentChunk().WriteConstant(std::monostate{});
+					}
+				}
+			}
+			const uint16_t blueprintIndex = generator.CurrentChunk().AddConstant(
+				std::make_shared<const std::string>(*actorName));
 			generator.CurrentChunk().Write(OpCode::OP_BUILD_ACTOR);
-			generator.CurrentChunk().code.push_back(blueprintIndex);
-			generator.CurrentChunk().code.push_back(static_cast<uint8_t>(it->second.size()));
+			generator.CurrentChunk().WriteOperand(OpCode::OP_BUILD_ACTOR, blueprintIndex);
+			generator.CurrentChunk().code.push_back(static_cast<uint8_t>(actorIt->second.size()));
 			return true;
 		}
 	}
@@ -63,12 +111,26 @@ bool BytecodeGenerator::AccessEmitter::TryEmitDirectTypeConstructorCall(const Ca
 				aliasIt != generator.m_metadata.importAliases.end())
 			{
 				const std::string qualifiedName = aliasIt->second + "." + memberAccess->member;
-				if (const auto it = generator.m_metadata.structLayouts.find(qualifiedName);
-					it != generator.m_metadata.structLayouts.end())
+				if (const auto structName = generator.EnsureStructMetadata(qualifiedName))
 				{
+					const auto it = generator.m_metadata.structLayouts.find(*structName);
 					EmitCallArguments(node.args);
 					generator.CurrentChunk().Write(OpCode::OP_BUILD_STRUCT);
 					generator.CurrentChunk().code.push_back(static_cast<uint8_t>(it->second.size()));
+					if (const auto invariantName = generator.m_metadata.structInvariantChecks.find(*structName);
+						invariantName != generator.m_metadata.structInvariantChecks.end())
+					{
+						const std::string hiddenInvariantName = invariantName->second;
+						generator.CurrentChunk().Write(OpCode::OP_DUP);
+						const uint16_t fnIndex = generator.CurrentChunk().AddConstant(
+							std::make_shared<const std::string>(hiddenInvariantName));
+						generator.CurrentChunk().Write(OpCode::OP_GET_GLOBAL);
+						generator.CurrentChunk().WriteOperand(OpCode::OP_GET_GLOBAL, fnIndex);
+						generator.CurrentChunk().Write(OpCode::OP_SWAP);
+						generator.CurrentChunk().Write(OpCode::OP_CALL);
+						generator.CurrentChunk().code.push_back(1);
+						generator.CurrentChunk().Write(OpCode::OP_POP);
+					}
 					return true;
 				}
 
@@ -82,15 +144,30 @@ bool BytecodeGenerator::AccessEmitter::TryEmitDirectTypeConstructorCall(const Ca
 					return true;
 				}
 
-				if (const auto it = generator.m_metadata.actorLayouts.find(qualifiedName);
-					it != generator.m_metadata.actorLayouts.end())
+				if (const auto actorName = generator.EnsureActorMetadata(qualifiedName))
 				{
+					const auto actorIt = generator.m_metadata.actorLayouts.find(*actorName);
 					EmitCallArguments(node.args);
-					const uint8_t blueprintIndex = generator.CurrentChunk().AddConstant(
-						std::make_shared<const std::string>(qualifiedName));
+					if (const auto defaultsIt = generator.m_metadata.actorFieldDefaults.find(*actorName);
+						defaultsIt != generator.m_metadata.actorFieldDefaults.end())
+					{
+						for (size_t i = node.args.size(); i < defaultsIt->second.size(); ++i)
+						{
+							if (defaultsIt->second[i])
+							{
+								defaultsIt->second[i]->Accept(generator);
+							}
+							else
+							{
+								generator.CurrentChunk().WriteConstant(std::monostate{});
+							}
+						}
+					}
+					const uint16_t blueprintIndex = generator.CurrentChunk().AddConstant(
+						std::make_shared<const std::string>(*actorName));
 					generator.CurrentChunk().Write(OpCode::OP_BUILD_ACTOR);
-					generator.CurrentChunk().code.push_back(blueprintIndex);
-					generator.CurrentChunk().code.push_back(static_cast<uint8_t>(it->second.size()));
+					generator.CurrentChunk().WriteOperand(OpCode::OP_BUILD_ACTOR, blueprintIndex);
+					generator.CurrentChunk().code.push_back(static_cast<uint8_t>(actorIt->second.size()));
 					return true;
 				}
 			}
@@ -111,17 +188,42 @@ bool BytecodeGenerator::AccessEmitter::TryEmitMemberCall(const CallNode& node) c
 	if (const auto hiddenMethod = generator.ResolveStructMethod(memberAccess->object.get(),
 			memberAccess->member))
 	{
-		const uint8_t fnIndex = generator.CurrentChunk().AddConstant(
+		const uint16_t fnIndex = generator.CurrentChunk().AddConstant(
 			std::make_shared<const std::string>(*hiddenMethod));
 		generator.CurrentChunk().Write(OpCode::OP_GET_GLOBAL);
-		generator.CurrentChunk().code.push_back(fnIndex);
+		generator.CurrentChunk().WriteOperand(OpCode::OP_GET_GLOBAL, fnIndex);
 		memberAccess->object->Accept(generator);
+		const auto signatureIt = generator.m_metadata.functionSignatures.find(*hiddenMethod);
+		const auto contextParams = signatureIt != generator.m_metadata.functionSignatures.end()
+			? signatureIt->second.contextParams
+			: std::vector<std::string>{};
+		EmitContextArguments(contextParams);
 		const auto refParams = generator.m_metadata.functionSignatures.contains(*hiddenMethod)
 			? generator.m_metadata.functionSignatures.at(*hiddenMethod).refParams
 			: std::vector<bool>{};
-		EmitCallArguments(node.args, refParams, 1);
+		EmitCallArguments(node.args, refParams, 1 + contextParams.size());
+		if (const auto it = generator.m_metadata.functionSignatures.find(*hiddenMethod);
+			it != generator.m_metadata.functionSignatures.end())
+		{
+			const size_t hiddenPrefixCount = 1 + contextParams.size();
+			const size_t fixedSupplied = std::min(hiddenPrefixCount + node.args.size(), it->second.defaultArgs.size());
+			for (size_t i = fixedSupplied; i < it->second.defaultArgs.size(); ++i)
+			{
+				if (!it->second.defaultArgs[i])
+				{
+					throw std::runtime_error("Missing default argument metadata for method: " + *hiddenMethod);
+				}
+				it->second.defaultArgs[i]->Accept(generator);
+			}
+		}
 		generator.CurrentChunk().Write(OpCode::OP_CALL);
-		generator.CurrentChunk().code.push_back(static_cast<uint8_t>(node.args.size() + 1));
+		const auto it = generator.m_metadata.functionSignatures.find(*hiddenMethod);
+		const size_t totalArgs = it != generator.m_metadata.functionSignatures.end()
+			? (it->second.variadic
+					  ? node.args.size() + 1 + contextParams.size()
+					  : it->second.defaultArgs.size() + contextParams.size())
+			: node.args.size() + 1 + contextParams.size();
+		generator.CurrentChunk().code.push_back(static_cast<uint8_t>(totalArgs));
 		return true;
 	}
 
@@ -138,15 +240,38 @@ bool BytecodeGenerator::AccessEmitter::TryEmitMemberCall(const CallNode& node) c
 	if (generator.ResolveActorMethod(memberAccess->object.get(), memberAccess->member))
 	{
 		memberAccess->object->Accept(generator);
-		EmitCallArguments(node.args);
+		const auto actorType = generator.InferActorTypeName(memberAccess->object.get());
+		std::vector<std::string> contextParams;
+		if (actorType)
+		{
+			const auto methodIt = generator.m_metadata.actorMethodNames.find(*actorType);
+			if (methodIt != generator.m_metadata.actorMethodNames.end())
+			{
+				const auto hiddenIt = methodIt->second.find(memberAccess->member);
+				if (hiddenIt != methodIt->second.end())
+				{
+					const auto sigIt = generator.m_metadata.functionSignatures.find(hiddenIt->second);
+					if (sigIt != generator.m_metadata.functionSignatures.end())
+					{
+						contextParams = sigIt->second.contextParams;
+					}
+				}
+			}
+		}
+		EmitContextArguments(contextParams);
+		EmitCallArguments(node.args, {}, contextParams.size());
 		generator.CurrentChunk().Write(
 			generator.IsActorQueryMethod(memberAccess->object.get(), memberAccess->member)
 				? OpCode::OP_ACTOR_QUERY
 				: OpCode::OP_ACTOR_SEND);
-		const uint8_t methodNameIndex = generator.CurrentChunk().AddConstant(
+		const uint16_t methodNameIndex = generator.CurrentChunk().AddConstant(
 			std::make_shared<const std::string>(memberAccess->member));
-		generator.CurrentChunk().code.push_back(methodNameIndex);
-		generator.CurrentChunk().code.push_back(static_cast<uint8_t>(node.args.size()));
+		generator.CurrentChunk().WriteOperand(
+			generator.IsActorQueryMethod(memberAccess->object.get(), memberAccess->member)
+				? OpCode::OP_ACTOR_QUERY
+				: OpCode::OP_ACTOR_SEND,
+			methodNameIndex);
+		generator.CurrentChunk().code.push_back(static_cast<uint8_t>(node.args.size() + contextParams.size()));
 		return true;
 	}
 
@@ -155,13 +280,55 @@ bool BytecodeGenerator::AccessEmitter::TryEmitMemberCall(const CallNode& node) c
 
 void BytecodeGenerator::AccessEmitter::EmitCall(const CallNode& node) const
 {
+	auto emitMissingDefaults = [&](const std::string& functionName, const size_t suppliedCount, const size_t refOffset = 0) {
+		if (const auto it = generator.m_metadata.functionSignatures.find(functionName);
+			it != generator.m_metadata.functionSignatures.end())
+		{
+			if (suppliedCount < it->second.requiredArity
+				|| (!it->second.variadic && suppliedCount > it->second.defaultArgs.size()))
+			{
+				throw std::runtime_error("Call arity does not match function signature: " + functionName);
+			}
+			const size_t fixedSupplied = std::min(suppliedCount, it->second.defaultArgs.size());
+			for (size_t i = fixedSupplied; i < it->second.defaultArgs.size(); ++i)
+			{
+				const bool byRef = i + refOffset < it->second.refParams.size() && it->second.refParams[i + refOffset];
+				if (byRef)
+				{
+					throw std::runtime_error("ref parameters cannot have default values");
+				}
+				if (!it->second.defaultArgs[i])
+				{
+					throw std::runtime_error("Missing default argument metadata for function: " + functionName);
+				}
+				it->second.defaultArgs[i]->Accept(generator);
+			}
+		}
+	};
+
+	if (const auto* identifier = dynamic_cast<const IdentifierNode*>(node.callee.get());
+		identifier && identifier->name == "resume")
+	{
+		if (!generator.CurrentContext().isEffectHandler)
+		{
+			throw std::runtime_error("resume(value) can only be emitted inside an effect handler");
+		}
+		if (node.args.size() != 1)
+		{
+			throw std::runtime_error("resume(value) expects exactly one argument");
+		}
+		node.args[0]->Accept(generator);
+		generator.CurrentChunk().Write(OpCode::OP_RETURN);
+		return;
+	}
+
 	if (const auto effectOp = generator.ResolveEffectOperation(node.callee.get()))
 	{
 		EmitCallArguments(node.args);
-		const uint8_t effectIndex = generator.CurrentChunk().AddConstant(
+		const uint16_t effectIndex = generator.CurrentChunk().AddConstant(
 			std::make_shared<const std::string>(*effectOp));
 		generator.CurrentChunk().Write(OpCode::OP_EFFECT_INVOKE);
-		generator.CurrentChunk().code.push_back(effectIndex);
+		generator.CurrentChunk().WriteOperand(OpCode::OP_EFFECT_INVOKE, effectIndex);
 		generator.CurrentChunk().code.push_back(static_cast<uint8_t>(node.args.size()));
 		return;
 	}
@@ -172,9 +339,82 @@ void BytecodeGenerator::AccessEmitter::EmitCall(const CallNode& node) const
 	}
 
 	node.callee->Accept(generator);
-	EmitCallArguments(node.args, generator.ResolveFunctionRefParams(node.callee.get()));
+	const auto refParams = generator.ResolveFunctionRefParams(node.callee.get());
+	std::vector<std::string> contextParams;
+	if (const auto* identifier = dynamic_cast<const IdentifierNode*>(node.callee.get()))
+	{
+		if (const auto it = generator.m_metadata.functionSignatures.find(generator.QualifyName(identifier->name));
+			it != generator.m_metadata.functionSignatures.end())
+		{
+			contextParams = it->second.contextParams;
+		}
+	}
+	else if (const auto* memberAccess = dynamic_cast<const MemberAccessNode*>(node.callee.get()))
+	{
+		if (const auto* moduleIdentifier = dynamic_cast<const IdentifierNode*>(memberAccess->object.get()))
+		{
+			if (const auto aliasIt = generator.m_metadata.importAliases.find(moduleIdentifier->name);
+				aliasIt != generator.m_metadata.importAliases.end())
+			{
+				if (const auto it = generator.m_metadata.functionSignatures.find(aliasIt->second + "." + memberAccess->member);
+					it != generator.m_metadata.functionSignatures.end())
+				{
+					contextParams = it->second.contextParams;
+				}
+			}
+		}
+	}
+	EmitContextArguments(contextParams);
+	EmitCallArguments(node.args, refParams, contextParams.size());
+	if (const auto* identifier = dynamic_cast<const IdentifierNode*>(node.callee.get()))
+	{
+		emitMissingDefaults(generator.QualifyName(identifier->name), node.args.size());
+	}
+	else if (const auto* memberAccess = dynamic_cast<const MemberAccessNode*>(node.callee.get()))
+	{
+		if (const auto* moduleIdentifier = dynamic_cast<const IdentifierNode*>(memberAccess->object.get()))
+		{
+			if (const auto aliasIt = generator.m_metadata.importAliases.find(moduleIdentifier->name);
+				aliasIt != generator.m_metadata.importAliases.end())
+			{
+				emitMissingDefaults(aliasIt->second + "." + memberAccess->member, node.args.size());
+			}
+		}
+	}
 	generator.CurrentChunk().Write(OpCode::OP_CALL);
-	generator.CurrentChunk().code.push_back(static_cast<uint8_t>(node.args.size()));
+	if (const auto* identifier = dynamic_cast<const IdentifierNode*>(node.callee.get()))
+	{
+		const auto it = generator.m_metadata.functionSignatures.find(generator.QualifyName(identifier->name));
+		generator.CurrentChunk().code.push_back(static_cast<uint8_t>(
+			(it != generator.m_metadata.functionSignatures.end()
+					? (it->second.variadic
+							  ? node.args.size() + it->second.contextParams.size()
+							  : it->second.defaultArgs.size() + it->second.contextParams.size())
+					: node.args.size())));
+	}
+	else if (const auto* memberAccess = dynamic_cast<const MemberAccessNode*>(node.callee.get()))
+	{
+		if (const auto* moduleIdentifier = dynamic_cast<const IdentifierNode*>(memberAccess->object.get()))
+		{
+			if (const auto aliasIt = generator.m_metadata.importAliases.find(moduleIdentifier->name);
+				aliasIt != generator.m_metadata.importAliases.end())
+			{
+				const auto it = generator.m_metadata.functionSignatures.find(aliasIt->second + "." + memberAccess->member);
+				generator.CurrentChunk().code.push_back(static_cast<uint8_t>(
+					(it != generator.m_metadata.functionSignatures.end()
+							? (it->second.variadic
+									  ? node.args.size() + it->second.contextParams.size()
+									  : it->second.defaultArgs.size() + it->second.contextParams.size())
+							: node.args.size())));
+				return;
+			}
+		}
+		generator.CurrentChunk().code.push_back(static_cast<uint8_t>(node.args.size()));
+	}
+	else
+	{
+		generator.CurrentChunk().code.push_back(static_cast<uint8_t>(node.args.size()));
+	}
 }
 
 void BytecodeGenerator::AccessEmitter::EmitMemberAccess(MemberAccessNode& node) const
@@ -213,10 +453,10 @@ void BytecodeGenerator::AccessEmitter::EmitMemberAccess(MemberAccessNode& node) 
 	}
 
 	node.object->Accept(generator);
-	const uint8_t memberIndex = generator.CurrentChunk().AddConstant(
+	const uint16_t memberIndex = generator.CurrentChunk().AddConstant(
 		std::make_shared<const std::string>(node.member));
 	generator.CurrentChunk().Write(OpCode::OP_GET_MODULE_MEMBER);
-	generator.CurrentChunk().code.push_back(memberIndex);
+	generator.CurrentChunk().WriteOperand(OpCode::OP_GET_MODULE_MEMBER, memberIndex);
 }
 
 void BytecodeGenerator::AccessEmitter::EmitAssignment(const AssignmentNode& node) const

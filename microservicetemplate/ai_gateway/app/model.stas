@@ -1,0 +1,6 @@
+struct ChatMessage
+{
+    string role;
+    string content;
+    float temperature;
+}

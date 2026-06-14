@@ -1,0 +1,19 @@
+module microservicetemplate.internal.app.auth.token;
+
+import std.result as result;
+
+struct UserToken {
+    user_id: string;
+}
+
+export UserToken;
+
+export fn user_id(token: UserToken) : string {
+    return token.user_id;
+};
+
+interface TokenParser {
+    fn parse_bearer(auth_header: string) : result.Result<UserToken, string>;
+}
+
+export TokenParser;

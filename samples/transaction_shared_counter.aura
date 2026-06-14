@@ -1,0 +1,12 @@
+module samples.transaction_shared_counter;
+
+import std.io as io;
+
+shared var counter: int = 0;
+
+transaction(shared counter) {
+    counter = counter + 1;
+    counter = counter + 41;
+}
+
+io.println("shared counter:", counter);

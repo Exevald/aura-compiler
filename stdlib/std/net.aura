@@ -1,0 +1,39 @@
+module std.net;
+
+import std.net_native as native;
+
+export fn listen(address: string, port: int) : std.net.Listener {
+    return native.listen(address, port);
+};
+
+export fn accept(listener: std.net.Listener) : std.net.Connection {
+    return native.accept(listener);
+};
+
+export fn read(connection: std.net.Connection, max_bytes: int) : string {
+    return native.read(connection, max_bytes);
+};
+
+export fn write(connection: std.net.Connection, payload: string) : int {
+    return native.write(connection, payload);
+};
+
+export fn close(socket_value: any) : bool {
+    return native.close(socket_value);
+};
+
+export fn local_port(socket_value: any) : int {
+    return native.local_port(socket_value);
+};
+
+export fn set_nodelay(connection: std.net.Connection, enabled: bool) : bool {
+    return native.set_nodelay(connection, enabled);
+};
+
+export fn set_read_timeout(connection: std.net.Connection, millis: int) : bool {
+    return native.set_read_timeout(connection, millis);
+};
+
+export fn set_write_timeout(connection: std.net.Connection, millis: int) : bool {
+    return native.set_write_timeout(connection, millis);
+};

@@ -1,0 +1,27 @@
+module microservicetemplate.internal.app.service.task_cache;
+
+actor TaskCache {
+    state owner_lists: string = "";
+
+    query ping() : bool {
+        return true;
+    }
+
+    query list_json(owner_user_id: string) : string {
+        return "";
+    }
+
+    msg store_list(owner_user_id: string, body_json: string) {
+        owner_lists = body_json;
+    }
+
+    msg invalidate_owner(owner_user_id: string) {
+        owner_lists = "";
+    }
+}
+
+export TaskCache;
+
+export fn new() : TaskCache {
+    return TaskCache("");
+};

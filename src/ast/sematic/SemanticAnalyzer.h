@@ -18,15 +18,20 @@ private:
 	enum class TypeKind
 	{
 		Unknown,
+		Any,
 		Void,
 		Bool,
 		Int,
 		Float,
 		String,
+		Never,
 		Array,
+		Map,
+		Channel,
 		Pointer,
 		Ref,
 		Function,
+		Task,
 		Module,
 		Interface,
 		Struct,
@@ -41,35 +46,55 @@ private:
 	{
 		TypeKind kind{ TypeKind::Unknown };
 		std::shared_ptr<TypeInfo> element;
+		std::shared_ptr<TypeInfo> key;
 
 		std::vector<TypeInfo> params;
 		std::shared_ptr<TypeInfo> ret;
 		std::string name;
+		size_t minArity = 0;
 		bool variadic = false;
 		std::shared_ptr<TypeInfo> variadicParam;
 		std::shared_ptr<std::unordered_map<std::string, TypeInfo>> fields;
 		std::vector<TypeInfo> variantArgs;
 		int enumTag = -1;
 		std::shared_ptr<std::unordered_map<std::string, TypeInfo>> methods;
+		std::shared_ptr<std::unordered_set<std::string>> implementedInterfaces;
+		std::shared_ptr<std::unordered_set<std::string>> raisedEffects;
+		std::shared_ptr<std::vector<std::pair<std::string, TypeInfo>>> contextRequirements;
 		std::vector<TypeInfo> constraints;
+		bool isComptime = false;
 
 		static TypeInfo Unknown() { return {}; }
 		static TypeInfo Void() { return { TypeKind::Void }; }
+		static TypeInfo Any() { return { TypeKind::Any }; }
 		static TypeInfo Bool() { return { TypeKind::Bool }; }
 		static TypeInfo Int() { return { TypeKind::Int }; }
 		static TypeInfo Float() { return { TypeKind::Float }; }
 		static TypeInfo String() { return { TypeKind::String }; }
+		static TypeInfo Never() { return { TypeKind::Never }; }
 
 		static TypeInfo Function(
 			std::vector<TypeInfo> p,
 			TypeInfo r,
+			size_t requiredArity = static_cast<size_t>(-1),
+			std::unordered_set<std::string> effects = {},
+			std::vector<std::pair<std::string, TypeInfo>> contexts = {},
+			bool comptimeOnly = false,
 			bool isVariadic = false,
 			std::optional<TypeInfo> variadicParameter = std::nullopt)
 		{
 			TypeInfo t;
 			t.kind = TypeKind::Function;
+			if (requiredArity == static_cast<size_t>(-1))
+			{
+				requiredArity = p.size();
+			}
 			t.params = std::move(p);
+			t.minArity = requiredArity;
 			t.variadic = isVariadic;
+			t.isComptime = comptimeOnly;
+			t.raisedEffects = std::make_shared<std::unordered_set<std::string>>(std::move(effects));
+			t.contextRequirements = std::make_shared<std::vector<std::pair<std::string, TypeInfo>>>(std::move(contexts));
 			if (variadicParameter.has_value())
 			{
 				t.variadicParam = std::make_shared<TypeInfo>(std::move(*variadicParameter));
@@ -78,10 +103,35 @@ private:
 			return t;
 		}
 
+		static TypeInfo TaskOf(TypeInfo valueType)
+		{
+			TypeInfo t;
+			t.kind = TypeKind::Task;
+			t.element = std::make_shared<TypeInfo>(std::move(valueType));
+			return t;
+		}
+
 		static TypeInfo ArrayOf(TypeInfo elem)
 		{
 			TypeInfo t;
 			t.kind = TypeKind::Array;
+			t.element = std::make_shared<TypeInfo>(std::move(elem));
+			return t;
+		}
+
+		static TypeInfo MapOf(TypeInfo keyType, TypeInfo valueType)
+		{
+			TypeInfo t;
+			t.kind = TypeKind::Map;
+			t.key = std::make_shared<TypeInfo>(std::move(keyType));
+			t.element = std::make_shared<TypeInfo>(std::move(valueType));
+			return t;
+		}
+
+		static TypeInfo ChannelOf(TypeInfo elem)
+		{
+			TypeInfo t;
+			t.kind = TypeKind::Channel;
 			t.element = std::make_shared<TypeInfo>(std::move(elem));
 			return t;
 		}
@@ -137,13 +187,15 @@ private:
 		static TypeInfo Struct(
 			std::string structName,
 			std::unordered_map<std::string, TypeInfo> structFields,
-			std::unordered_map<std::string, TypeInfo> structMethods = {})
+			std::unordered_map<std::string, TypeInfo> structMethods = {},
+			std::unordered_set<std::string> interfaces = {})
 		{
 			TypeInfo t;
 			t.kind = TypeKind::Struct;
 			t.name = std::move(structName);
 			t.fields = std::make_shared<std::unordered_map<std::string, TypeInfo>>(std::move(structFields));
 			t.methods = std::make_shared<std::unordered_map<std::string, TypeInfo>>(std::move(structMethods));
+			t.implementedInterfaces = std::make_shared<std::unordered_set<std::string>>(std::move(interfaces));
 			return t;
 		}
 
@@ -204,13 +256,22 @@ private:
 			{
 				return false;
 			}
-			if (kind == TypeKind::Array || kind == TypeKind::Pointer || kind == TypeKind::Ref)
+			if (kind == TypeKind::Array || kind == TypeKind::Channel || kind == TypeKind::Pointer
+				|| kind == TypeKind::Ref || kind == TypeKind::Task)
 			{
 				if (!element || !other.element)
 				{
 					return element == other.element;
 				}
 				return element->Equals(*other.element);
+			}
+			if (kind == TypeKind::Map)
+			{
+				if (!key || !other.key || !element || !other.element)
+				{
+					return key == other.key && element == other.element;
+				}
+				return key->Equals(*other.key) && element->Equals(*other.element);
 			}
 			if (kind == TypeKind::Function)
 			{
@@ -236,12 +297,39 @@ private:
 				{
 					return false;
 				}
+				if (minArity != other.minArity || isComptime != other.isComptime)
+				{
+					return false;
+				}
+				if ((!contextRequirements || !other.contextRequirements)
+						? (contextRequirements != other.contextRequirements)
+						: (contextRequirements->size() != other.contextRequirements->size()))
+				{
+					return false;
+				}
+				if (contextRequirements && other.contextRequirements)
+				{
+					for (size_t i = 0; i < contextRequirements->size(); ++i)
+					{
+						if ((*contextRequirements)[i].first != (*other.contextRequirements)[i].first
+							|| !(*contextRequirements)[i].second.Equals((*other.contextRequirements)[i].second))
+						{
+							return false;
+						}
+					}
+				}
 				for (size_t i = 0; i < params.size(); ++i)
 				{
 					if (!params[i].Equals(other.params[i]))
 					{
 						return false;
 					}
+				}
+				if (!raisedEffects || !other.raisedEffects
+						? raisedEffects != other.raisedEffects
+						: *raisedEffects != *other.raisedEffects)
+				{
+					return false;
 				}
 				if (!ret || !other.ret)
 				{
@@ -264,7 +352,9 @@ private:
 			}
 			if (kind == TypeKind::EnumConstructor)
 			{
-				if (name != other.name || enumTag != other.enumTag || variantArgs.size() != other.variantArgs.size())
+				if (name != other.name
+					|| enumTag != other.enumTag
+					|| variantArgs.size() != other.variantArgs.size())
 				{
 					return false;
 				}
@@ -280,6 +370,13 @@ private:
 			return true;
 		}
 	};
+
+	[[nodiscard]] bool HasVariadicParameter(const std::vector<Parameter>& params) const;
+	[[nodiscard]] const Parameter* FindVariadicParameter(const std::vector<Parameter>& params) const;
+	[[nodiscard]] std::vector<TypeInfo> BuildFixedParamTypes(const std::vector<Parameter>& params) const;
+	[[nodiscard]] std::optional<TypeInfo> BuildVariadicParamType(const std::vector<Parameter>& params) const;
+	[[nodiscard]] TypeInfo DeclaredParameterType(const Parameter& param) const;
+	void ValidateParameterList(const std::vector<Parameter>& params, const std::string& ownerName) const;
 
 	struct SymbolInfo
 	{
@@ -311,17 +408,33 @@ private:
 		std::string aliasedType;
 	};
 
+	struct GenericNominalInfo
+	{
+		std::vector<TypeParameterDecl> typeParams;
+		TypeInfo templatedType;
+	};
+
 	struct TypeRegistry
 	{
+		struct ConstructorSignature
+		{
+			std::vector<std::pair<std::string, TypeInfo>> params;
+			size_t requiredArity = 0;
+		};
+
 		std::unordered_map<std::string, TypeInfo> structs;
 		std::unordered_map<std::string, TypeInfo> enums;
 		std::unordered_map<std::string, TypeInfo> enumConstructors;
 		std::unordered_map<std::string, TypeInfo> interfaces;
 		std::unordered_map<std::string, TypeInfo> actors;
 		std::unordered_map<std::string, TypeInfo> effects;
-		std::unordered_map<std::string, std::string> effectOperations;
+		std::unordered_map<std::string, ConstructorSignature> constructorSignatures;
 		std::unordered_map<std::string, std::string> aliases;
 		std::unordered_map<std::string, GenericAliasInfo> genericAliases;
+		std::unordered_map<std::string, GenericNominalInfo> genericStructs;
+		std::unordered_map<std::string, GenericNominalInfo> genericEnums;
+		std::unordered_map<std::string, GenericNominalInfo> genericInterfaces;
+		std::unordered_map<std::string, GenericNominalInfo> genericActors;
 
 		void Clear()
 		{
@@ -331,9 +444,13 @@ private:
 			interfaces.clear();
 			actors.clear();
 			effects.clear();
-			effectOperations.clear();
+			constructorSignatures.clear();
 			aliases.clear();
 			genericAliases.clear();
+			genericStructs.clear();
+			genericEnums.clear();
+			genericInterfaces.clear();
+			genericActors.clear();
 		}
 	};
 
@@ -373,6 +490,7 @@ private:
 		void Analyze(const CallNode& node) const;
 
 	private:
+		void ValidateContextRequirements(const TypeInfo& funcType) const;
 		void ValidateTypeCompatibility(const TypeInfo& expected, const TypeInfo& actual, const std::string& error) const;
 		void AnalyzeStructConstructorCall(const TypeInfo& funcType, const std::vector<ASTNodePtr>& args) const;
 		void AnalyzeEnumConstructorCall(const TypeInfo& funcType, const std::vector<ASTNodePtr>& args) const;
@@ -400,6 +518,13 @@ private:
 	[[nodiscard]] bool IsModuleMemberExported(const std::string& moduleName, const std::string& member) const;
 	[[nodiscard]] bool ModuleDefinesMember(const std::string& moduleName, const std::string& member) const;
 	[[nodiscard]] bool CurrentContextAllowsEffect(const std::string& effectName) const;
+	[[nodiscard]] std::vector<std::string> ResolveAccessibleEffectsForOperation(const std::string& operationName) const;
+	void ValidateContractList(
+		const std::vector<std::unique_ptr<ContractNode>>& contracts,
+		const std::optional<TypeInfo>& ensuresResult = std::nullopt,
+		const std::optional<TypeInfo>& selfType = std::nullopt);
+	void RejectRuntimeOnlyInComptime(const std::string& what) const;
+	[[nodiscard]] bool IsUnsafeMemoryCall(const CallNode& node);
 	[[nodiscard]] bool HasActiveTransaction(const std::string& regionName) const;
 	[[nodiscard]] bool IsCurrentActorState(const std::string& name) const;
 	[[nodiscard]] static bool IsSendable(const TypeInfo& type);
@@ -415,6 +540,7 @@ private:
 		const TypeInfo& actual,
 		std::unordered_map<std::string, TypeInfo>& bindings) const;
 	[[nodiscard]] bool SatisfiesConstraints(const TypeInfo& actual, const std::vector<TypeInfo>& constraints) const;
+	void RegisterBuiltinTypes();
 	void RegisterBuiltinModules();
 
 	TypeInfo m_lastType;
@@ -426,11 +552,14 @@ private:
 	std::vector<std::unordered_map<std::string, TypeInfo>> m_typeParamScopes;
 	std::vector<std::unordered_set<std::string>> m_activeHandledEffects;
 	std::vector<std::unordered_set<std::string>> m_activeRaisedEffects;
+	std::vector<TypeInfo> m_activeResumeTypes;
 	std::vector<std::unordered_set<std::string>> m_actorStateScopes;
 	std::vector<std::unordered_set<std::string>> m_activeTransactions;
 	std::unordered_set<std::string> m_sharedVariables;
 	int m_actorQueryDepth = 0;
 	int m_unsafeDepth = 0;
+	int m_comptimeDepth = 0;
+	int m_functionDepth = 0;
 
 	TypeInfo VisitAndGet(ASTNode* node);
 
@@ -455,6 +584,8 @@ private:
 	void Visit(FunctionDeclNode& node) override;
 	void Visit(FunctionExprNode& node) override;
 	void Visit(CallNode& node) override;
+	void Visit(GoExprNode& node) override;
+	void Visit(AwaitExprNode& node) override;
 	void Visit(MemberAccessNode& node) override;
 	void Visit(ModuleDeclNode& node) override;
 	void Visit(ImportDeclNode& node) override;
@@ -462,6 +593,7 @@ private:
 	void Visit(PrintNode& node) override;
 	void Visit(UnsafeNode& node) override;
 	void Visit(ArrayLiteralNode& node) override;
+	void Visit(MapLiteralNode& node) override;
 	void Visit(IndexNode& node) override;
 	void Visit(IterNode& node) override;
 	void Visit(TransactionNode& node) override;
@@ -469,4 +601,5 @@ private:
 	void Visit(LeafNode& node) override;
 	void Visit(RawNode& node) override;
 	void Visit(ComptimeNode& node) override;
+	void Visit(ContractNode& node) override;
 };

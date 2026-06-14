@@ -59,6 +59,10 @@ inline std::string RemapTokenTypeToString(const Token& t)
 		return "effect";
 	case TokenType::KW_COMPTIME:
 		return "comptime";
+	case TokenType::KW_GO:
+		return "go";
+	case TokenType::KW_AWAIT:
+		return "await";
 	case TokenType::KW_PRINT:
 		return "print";
 
@@ -91,6 +95,8 @@ inline std::string RemapTokenTypeToString(const Token& t)
 		return "bool";
 	case TokenType::KW_STRING:
 		return "string";
+	case TokenType::KW_MAP:
+		return "map";
 	case TokenType::KW_VOID:
 		return "void";
 	case TokenType::KW_NEVER:
@@ -134,6 +140,8 @@ inline std::string RemapTokenTypeToString(const Token& t)
 		return ",";
 	case TokenType::DOT:
 		return ".";
+	case TokenType::ELLIPSIS:
+		return "...";
 	case TokenType::PIPE:
 		return "|";
 	case TokenType::PARAN_OPEN:

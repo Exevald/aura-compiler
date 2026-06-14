@@ -1,0 +1,23 @@
+module samples.interfaces_exports.main;
+
+import samples.interfaces_exports.api as api;
+import std.io as io;
+
+interface Reader<T> {
+    fn read() : T;
+}
+
+struct Box implements Reader<int> {
+    value: int;
+
+    fn read() : int {
+        return self.value;
+    }
+}
+
+var reader: Reader<int> = Box(41);
+var factory: api.ReaderFactory<int> = fn(value: int) -> value + 1;
+
+io.println("reader =", reader.read());
+io.println("factory =", factory(reader.read()));
+io.println("ready =", api.make_ready(reader.read()));

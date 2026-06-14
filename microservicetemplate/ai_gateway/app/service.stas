@@ -1,0 +1,72 @@
+import "./chat_history_repo.stas"
+import "./ai_client.stas"
+
+schema AskAiFlow
+{
+    state RawRequest(string prompt, string temp) {
+        func validate() -> Validated
+    }
+
+    state Validated(string prompt, string temp) {
+        func persistUser(ChatRepository<Ready> repo, Database<Connected> db) -> UserSaved
+    }
+
+    state UserSaved(string prompt, string temp, ChatRepository<Ready> repo, Database<Connected> db) {
+        func askAi(AiClient<Ready> aiClient) -> AiAnswered
+    }
+
+    state AiAnswered(string aiText, ChatRepository<Ready> repo, Database<Connected> db) {
+        func persistAi() -> Completed
+    }
+
+    state Completed(string finalResponse, ChatRepository<Ready> repo, Database<Connected> db) {}
+}
+
+impl AskAiFlow<RawRequest>
+{
+    public func validate() -> AskAiFlow<Validated> {
+        if (len(this.prompt) < 2) {
+            panic("Validation Error: Prompt is too short.");
+        }
+        return new AskAiFlow<Validated>(this.prompt, this.temp);
+    }
+}
+
+impl AskAiFlow<Validated>
+{
+    public func persistUser(ChatRepository<Ready> repo, Database<Connected> db) -> AskAiFlow<UserSaved> {
+        let ChatMessage msg = ChatMessage{"user", this.prompt, this.temp};
+        let ChatRepository repoRes = repo.saveMessage(db, msg);
+
+        let Database returnedDb = repoRes.db;
+        let ChatRepository readyRepo = repoRes.reset();
+
+        return new AskAiFlow<UserSaved>(this.prompt, this.temp, readyRepo, returnedDb);
+    }
+}
+
+impl AskAiFlow<UserSaved>
+{
+    public func askAi(AiClient<Ready> aiClient) -> AskAiFlow<AiAnswered> {
+        let AiClient answered = aiClient.ask(this.prompt, this.temp);
+
+        return new AskAiFlow<AiAnswered>(
+            answered.response,
+            this.repo,
+            this.db
+        );
+    }
+}
+
+impl AskAiFlow<AiAnswered>
+{
+    public func persistAi() -> AskAiFlow<Completed> {
+        let ChatMessage msg = ChatMessage{"assistant", this.aiText, 0.0};
+        let ChatRepository repoRes = this.repo.saveMessage(this.db, msg);
+
+        let Database returnedDb = repoRes.db;
+        let ChatRepository readyRepo = repoRes.reset();
+
+        return new AskAiFlow<Completed>(this.aiText, readyRepo, returnedDb);
+    }
+}

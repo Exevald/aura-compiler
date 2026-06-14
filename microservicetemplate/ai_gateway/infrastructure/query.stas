@@ -1,0 +1,36 @@
+import "../app/chat_query_repo.stas"
+
+impl ChatQueryRepo<Ready>
+{
+    public func fetchHistory(Database<Connected> db) -> ChatQueryRepo<Fetched> {
+        const string query = "SELECT message_role, content FROM chat_history ORDER BY id ASC;";
+        let Database<Connected> nextDb = db.execute(query);
+
+        let string json = '{"messages": [';
+        let int i = 0;
+        let int count = len(nextDb.lastResult);
+
+        for (int i = 0; i < count; i = i + 1)
+        {
+            let string[] row = nextDb.lastResult[i];
+            let string role = row[0];
+            let string content = row[1];
+
+            json = json + '{"role": "' + json_escape(role) + '", "content": "' + json_escape(content) + '"}';
+
+            if (i < count - 1) {
+                json = json + ",";
+            }
+        }
+        json = json + "]}";
+
+        return new ChatQueryRepo<Fetched>(nextDb, json);
+    }
+}
+
+impl ChatQueryRepo<Fetched>
+{
+    public func reset() -> ChatQueryRepo<Ready> {
+        return new ChatQueryRepo<Ready>();
+    }
+}

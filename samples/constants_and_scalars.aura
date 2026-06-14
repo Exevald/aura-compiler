@@ -1,0 +1,22 @@
+module samples.constants_and_scalars;
+
+import std.io as io;
+
+const maxScore: int = 100;
+const pi: float = 3.14;
+const greeting: string = "Aura";
+const enabled: bool = true;
+
+var currentScore: int = 7;
+var nextScore: int = currentScore + 5;
+var ratio: float = pi / 2.0;
+var message: string = greeting + " basics";
+var active: bool = enabled;
+
+currentScore = nextScore;
+
+io.println("maxScore =", maxScore);
+io.println("ratio =", ratio);
+io.println("message =", message);
+io.println("active =", active);
+io.println("currentScore =", currentScore);

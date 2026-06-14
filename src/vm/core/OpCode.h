@@ -56,6 +56,7 @@ enum class OpCode : uint8_t
 	OP_BUILD_ARRAY = 0x50,
 	OP_INDEX_GET = 0x51,
 	OP_INDEX_SET = 0x52,
+	OP_BUILD_MAP = 0x5C,
 
 	OP_BUILD_STRUCT = 0x53,
 	OP_MEMBER_GET = 0x54,
@@ -91,6 +92,9 @@ enum class OpCode : uint8_t
 	OP_BEGIN_TXN = 0x85,
 	OP_END_TXN = 0x86,
 	OP_BUILD_ACTOR_METHODS = 0x87,
+	OP_DUP = 0x88,
+	OP_SWAP = 0x89,
+	OP_ASSERT = 0x8A,
 
 	OP_RETURN = 0xFF,
 };
@@ -145,6 +149,8 @@ constexpr std::string_view GetOpCodeName(const OpCode opcode) noexcept
 		return "OP_NOT";
 	case OpCode::OP_BUILD_ARRAY:
 		return "OP_BUILD_ARRAY";
+	case OpCode::OP_BUILD_MAP:
+		return "OP_BUILD_MAP";
 	case OpCode::OP_INDEX_GET:
 		return "OP_INDEX_GET";
 	case OpCode::OP_BUILD_STRUCT:
@@ -176,29 +182,33 @@ constexpr bool OpCodeHasOperand(const OpCode opcode)
 	case OP_DEFINE_GLOBAL:
 	case OP_GET_GLOBAL:
 	case OP_SET_GLOBAL:
+	case OP_CLOSURE:
+	case OP_GET_MODULE_MEMBER:
+	case OP_ADDR_GLOBAL:
+	case OP_BUILD_ACTOR:
+	case OP_ACTOR_SEND:
+	case OP_ACTOR_QUERY:
+	case OP_EFFECT_INVOKE:
+	case OP_ASSERT:
+		return true;
+
 	case OP_GET_LOCAL:
 	case OP_SET_LOCAL:
 	case OP_GET_UPVALUE:
 	case OP_SET_UPVALUE:
 	case OP_CALL:
-	case OP_CLOSURE:
-	case OP_GET_MODULE_MEMBER:
 	case OP_LOOP:
 	case OP_BUILD_ARRAY:
+	case OP_BUILD_MAP:
 	case OP_BUILD_STRUCT:
 	case OP_MEMBER_GET:
 	case OP_MEMBER_SET:
 	case OP_BUILD_ENUM:
 	case OP_GET_ENUM_ARG:
-	case OP_BUILD_ACTOR:
-	case OP_ACTOR_SEND:
-	case OP_ACTOR_QUERY:
 	case OP_ADDR_LOCAL:
-	case OP_ADDR_GLOBAL:
-	case OP_ADDR_UPVALUE:
 	case OP_ITER_NEXT:
+	case OP_ADDR_UPVALUE:
 	case OP_BUILD_HANDLER:
-	case OP_EFFECT_INVOKE:
 	case OP_BUILD_ACTOR_METHODS:
 		return true;
 	default:
@@ -215,32 +225,36 @@ constexpr OperandSize GetOperandSize(const OpCode opcode)
 	case OP_JUMP_IF_FALSE:
 	case OP_JUMP_IF_TRUE:
 	case OP_LOOP:
-		return OperandSize::Uint16;
-
 	case OP_CONSTANT:
 	case OP_DEFINE_GLOBAL:
 	case OP_GET_GLOBAL:
 	case OP_SET_GLOBAL:
+	case OP_CLOSURE:
+	case OP_GET_MODULE_MEMBER:
+	case OP_ADDR_GLOBAL:
+	case OP_BUILD_ACTOR:
+	case OP_ACTOR_SEND:
+	case OP_ACTOR_QUERY:
+	case OP_EFFECT_INVOKE:
+	case OP_ASSERT:
+		return OperandSize::Uint16;
+
 	case OP_GET_LOCAL:
 	case OP_SET_LOCAL:
 	case OP_GET_UPVALUE:
 	case OP_SET_UPVALUE:
 	case OP_CALL:
-	case OP_CLOSURE:
-	case OP_GET_MODULE_MEMBER:
 	case OP_BUILD_ARRAY:
+	case OP_BUILD_MAP:
 	case OP_BUILD_STRUCT:
 	case OP_MEMBER_GET:
 	case OP_MEMBER_SET:
 	case OP_BUILD_ENUM:
 	case OP_GET_ENUM_ARG:
-	case OP_BUILD_ACTOR:
-	case OP_ACTOR_SEND:
-	case OP_ACTOR_QUERY:
 	case OP_ADDR_LOCAL:
-	case OP_ADDR_GLOBAL:
 	case OP_ADDR_UPVALUE:
 	case OP_ITER_NEXT:
+	case OP_BUILD_HANDLER:
 	case OP_BUILD_ACTOR_METHODS:
 		return OperandSize::Uint8;
 

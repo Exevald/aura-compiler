@@ -1,0 +1,22 @@
+import "../app/chat_history_repo.stas"
+
+impl ChatRepository<Ready>
+{
+    public func saveMessage(Database<Connected> db, ChatMessage msg) -> ChatRepository<Saved> {
+        let string safeContent = sql_escape(msg.content);
+        let string safeRole = sql_escape(msg.role);
+
+        let string query = "INSERT INTO chat_history (message_role, content, temperature) VALUES ('" + safeRole + "', '" + safeContent + "', " + to_str(msg.temperature) + ");";
+
+        let Database<Connected> nextDb = db.execute(query);
+
+        return new ChatRepository<Saved>(nextDb);
+    }
+}
+
+impl ChatRepository<Saved>
+{
+    public func reset() -> ChatRepository<Ready> {
+        return new ChatRepository<Ready>();
+    }
+}
