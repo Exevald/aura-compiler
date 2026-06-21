@@ -17,6 +17,27 @@ fn unauthorized_error() : string {
     return "unauthorized:missing authenticated user";
 };
 
+fn normalize_status(status: string) : string {
+    if (status == "done") {
+        return "resolved";
+    }
+    return status;
+};
+
+fn normalize_priority(priority: string) : string {
+    if (priority == "") {
+        return "normal";
+    }
+    return priority;
+};
+
+fn normalize_archived(archived: string) : string {
+    if (archived == "true" or archived == "1" or archived == "yes") {
+        return "true";
+    }
+    return "false";
+};
+
 fn read_repo(pool: std.mysql.Pool) : mysqlrepo.MySqlTaskRepository {
     return mysqlrepo.MySqlTaskRepository(pool);
 };
@@ -30,13 +51,27 @@ fn tx_create_task(
     owner_user_id: string,
     title: string,
     description: string,
-    status: string) : result.Result<domaintask.Task, string> {
-    var created = domaintaskservice.create_new_task(owner_user_id, title, description, status);
+    status: string,
+    priority: string,
+    due_date: string,
+    tags: string,
+    archived: string,
+    checklist: string) : result.Result<domaintask.Task, string> {
+    var created = domaintaskservice.create_new_task(owner_user_id, title, description, status, priority, due_date, tags, archived, checklist);
     if (created.tag != 0) {
         return result.Err(created[0]);
     }
     var repo: mysqlrepo.MySqlTaskRepository = write_repo(tx_conn);
-    return result.Ok(repo.create(owner_user_id, title, description, status));
+    return result.Ok(repo.create(
+        owner_user_id,
+        title,
+        description,
+        normalize_status(status),
+        normalize_priority(priority),
+        due_date,
+        tags,
+        normalize_archived(archived),
+        checklist));
 };
 
 fn tx_update_task(
@@ -45,19 +80,35 @@ fn tx_update_task(
     id: int,
     title: string,
     description: string,
-    status: string) : result.Result<domaintask.Task, string> {
+    status: string,
+    priority: string,
+    due_date: string,
+    tags: string,
+    archived: string,
+    checklist: string) : result.Result<domaintask.Task, string> {
     var repo: mysqlrepo.MySqlTaskRepository = write_repo(tx_conn);
     var existing = repo.find_by_id_for_owner(id, owner_user_id);
     if (existing.tag != 0) {
         return result.Err(not_found_error());
     }
 
-    var updated = domaintaskservice.update_task(existing[0], title, description, status);
+    var existing_task = existing[0];
+    var updated = domaintaskservice.update_task(existing_task, title, description, status, priority, due_date, tags, archived, checklist);
     if (updated.tag != 0) {
         return result.Err(updated[0]);
     }
 
-    var persisted = repo.update_for_owner(id, owner_user_id, title, description, status);
+    var persisted = repo.update_for_owner(
+        id,
+        owner_user_id,
+        title,
+        description,
+        normalize_status(status),
+        normalize_priority(priority),
+        due_date,
+        tags,
+        normalize_archived(archived),
+        checklist);
     if (persisted.tag != 0) {
         return result.Err(not_found_error());
     }
@@ -73,10 +124,10 @@ fn tx_delete_task(tx_conn: std.mysql.Connection, owner_user_id: string, id: int)
 };
 
 interface TaskAppService {
-    fn create(ctx: appctx.RequestContext, title: string, description: string, status: string) : result.Result<domaintask.Task, string>;
+    fn create(ctx: appctx.RequestContext, title: string, description: string, status: string, priority: string, due_date: string, tags: string, archived: string, checklist: string) : result.Result<domaintask.Task, string>;
     fn get(ctx: appctx.RequestContext, id: int) : result.Result<domaintask.Task, string>;
     fn list(ctx: appctx.RequestContext) : result.Result<[domaintask.Task], string>;
-    fn update(ctx: appctx.RequestContext, id: int, title: string, description: string, status: string) : result.Result<domaintask.Task, string>;
+    fn update(ctx: appctx.RequestContext, id: int, title: string, description: string, status: string, priority: string, due_date: string, tags: string, archived: string, checklist: string) : result.Result<domaintask.Task, string>;
     fn delete(ctx: appctx.RequestContext, id: int) : result.Result<bool, string>;
 }
 
@@ -87,7 +138,7 @@ struct TaskApplicationService implements TaskAppService {
     db_dsn: string;
     task_cache: cache.TaskCache;
 
-    fn create(ctx: appctx.RequestContext, title: string, description: string, status: string) : result.Result<domaintask.Task, string> {
+    fn create(ctx: appctx.RequestContext, title: string, description: string, status: string, priority: string, due_date: string, tags: string, archived: string, checklist: string) : result.Result<domaintask.Task, string> {
         var owner_user_id = appctx.user_id(ctx);
         if (owner_user_id == "") {
             return result.Err(unauthorized_error());
@@ -95,7 +146,7 @@ struct TaskApplicationService implements TaskAppService {
 
         var conn = db.open(db_dsn);
         var outcome: result.Result<domaintask.Task, string> = db.with_tx(conn, fn(tx_conn) -> {
-            return tx_create_task(tx_conn, owner_user_id, title, description, status);
+            return tx_create_task(tx_conn, owner_user_id, title, description, status, priority, due_date, tags, archived, checklist);
         });
         db.close(conn);
         return outcome;
@@ -126,7 +177,7 @@ struct TaskApplicationService implements TaskAppService {
         return result.Ok(tasks);
     }
 
-    fn update(ctx: appctx.RequestContext, id: int, title: string, description: string, status: string) : result.Result<domaintask.Task, string> {
+    fn update(ctx: appctx.RequestContext, id: int, title: string, description: string, status: string, priority: string, due_date: string, tags: string, archived: string, checklist: string) : result.Result<domaintask.Task, string> {
         var owner_user_id = appctx.user_id(ctx);
         if (owner_user_id == "") {
             return result.Err(unauthorized_error());
@@ -134,7 +185,7 @@ struct TaskApplicationService implements TaskAppService {
 
         var conn = db.open(db_dsn);
         var outcome: result.Result<domaintask.Task, string> = db.with_tx(conn, fn(tx_conn) -> {
-            return tx_update_task(tx_conn, owner_user_id, id, title, description, status);
+            return tx_update_task(tx_conn, owner_user_id, id, title, description, status, priority, due_date, tags, archived, checklist);
         });
         db.close(conn);
         return outcome;
@@ -156,3 +207,7 @@ struct TaskApplicationService implements TaskAppService {
 }
 
 export TaskApplicationService;
+
+export fn new(pool: std.mysql.Pool, db_dsn: string, task_cache: cache.TaskCache) : TaskApplicationService {
+    return TaskApplicationService(pool, db_dsn, task_cache);
+};

@@ -59,10 +59,11 @@ RUN chmod +x /app/entrypoint.sh
 
 WORKDIR /app/microservicetemplate/ai_gateway
 
-ENV AI_GATEWAY_PROVIDER_URL=https://api.openai.com/v1/chat/completions
+ENV AI_GATEWAY_PROVIDER_URL=https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
 ENV AI_GATEWAY_API_KEY=
-ENV AI_GATEWAY_MODE=mock
-ENV AI_GATEWAY_MODEL=qwen-plus
+ENV GEMINI_API_KEY=AQ.Ab8RN6Kom7v6z6lAVovsC__wvymthYCNGJjcXx4MYwUOTlVrfA
+ENV AI_GATEWAY_MODE=real
+ENV AI_GATEWAY_MODEL=gemini-3.5-flash
 ENV AI_GATEWAY_HTTP_PORT=8084
 
 EXPOSE 8084

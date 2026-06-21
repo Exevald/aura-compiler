@@ -4,6 +4,11 @@ CREATE TABLE IF NOT EXISTS task (
     title VARCHAR(255) NOT NULL,
     description TEXT NOT NULL,
     status VARCHAR(64) NOT NULL,
+    priority VARCHAR(16) NOT NULL DEFAULT 'normal',
+    due_date VARCHAR(32) NOT NULL DEFAULT '',
+    tags VARCHAR(1024) NOT NULL DEFAULT '',
+    archived VARCHAR(8) NOT NULL DEFAULT 'false',
+    checklist VARCHAR(2048) NOT NULL DEFAULT '',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_task_owner_id (owner_user_id, id)

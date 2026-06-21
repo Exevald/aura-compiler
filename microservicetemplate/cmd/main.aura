@@ -7,11 +7,12 @@ import std.http.server as server;
 import std.log as log;
 import std.service as service;
 
+import microservicetemplate.internal.app.service.http_metrics as httpmetrics;
 import microservicetemplate.internal.app.service.auth.task as taskauth;
 import microservicetemplate.internal.app.service.task as taskapp;
 import microservicetemplate.internal.app.service.task_cache as taskcache;
 import microservicetemplate.internal.infrastructure.auth.jwt_token_parser as jwt;
-import microservicetemplate.internal.infrastructure.transport.api;
+import microservicetemplate.internal.infrastructure.transport.api as api;
 
 const host = service.host_or("0.0.0.0");
 const port = service.port_or(8082);
@@ -32,10 +33,11 @@ if (db.ping(pool)) {
 }
 
 const cache = taskcache.new();
-const base_task_service = taskapp.TaskApplicationService(pool, db_dsn, cache);
-const secured_task_service = taskauth.AuthorizedTaskAppService(base_task_service);
+const metrics = httpmetrics.new();
+const base_task_service = taskapp.new(pool, db_dsn, cache);
+const secured_task_service = taskauth.new(base_task_service);
 const parser: jwt.JwtTokenParser = jwt.JwtTokenParser(auth_jwt_secret);
-api.init(secured_task_service, parser, cache, readiness);
+api.init(secured_task_service, parser, cache, metrics, readiness);
 const route = api.route;
 
 const app = middleware.chain(route, [

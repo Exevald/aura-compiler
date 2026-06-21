@@ -7,8 +7,10 @@ import std.result as result;
 import std.service as service;
 import std.http.server as server;
 import std.text as text;
+import std.time as time;
 
 import microservicetemplate.internal.app.context.request_context as appctx;
+import microservicetemplate.internal.app.service.http_metrics as httpmetrics;
 import microservicetemplate.internal.app.service.auth.task as taskauth;
 import microservicetemplate.internal.app.service.task_cache as taskcache;
 import microservicetemplate.internal.domain.model.task as domaintask;
@@ -17,6 +19,7 @@ import microservicetemplate.internal.infrastructure.auth.jwt_token_parser as jwt
 var task_service: taskauth.AuthorizedTaskAppService;
 var token_parser: jwt.JwtTokenParser;
 var list_cache: taskcache.TaskCache;
+var metrics_store: httpmetrics.HttpMetrics;
 var readiness_store;
 var dev_token: string;
 
@@ -34,6 +37,13 @@ fn task_list_json(tasks: [domaintask.Task]) : string {
     return body;
 };
 
+fn optional_string(request_body: string, key: string, fallback: string) : string {
+    if (json.has_key(request_body, key)) {
+        return json.get_string(request_body, key);
+    }
+    return fallback;
+};
+
 fn parse_task_body(request_body: string) : option.Option<[string]> {
     if (!json.is_valid(request_body)) {
         return option.None();
@@ -45,7 +55,12 @@ fn parse_task_body(request_body: string) : option.Option<[string]> {
     return option.Some([
         json.get_string(request_body, "title"),
         json.get_string(request_body, "description"),
-        json.get_string(request_body, "status")
+        json.get_string(request_body, "status"),
+        optional_string(request_body, "priority", "normal"),
+        optional_string(request_body, "due_date", ""),
+        optional_string(request_body, "tags", ""),
+        optional_string(request_body, "archived", "false"),
+        optional_string(request_body, "checklist", "")
     ]);
 };
 
@@ -85,6 +100,14 @@ fn ready_response() : string {
     ]));
 };
 
+fn ready_status() : int {
+    const status = service.store_get(readiness_store, "status");
+    if (status == "ready") {
+        return 200;
+    }
+    return 503;
+};
+
 fn strip_prefix(value: string, prefix: string) : string {
     return text.slice(value, text.len(prefix), text.len(value) - text.len(prefix));
 };
@@ -102,6 +125,19 @@ fn error_response(message: string) : string {
     return text_response(500, "text/plain", message);
 };
 
+fn error_status(message: string) : int {
+    if (text.starts_with(message, "unauthorized:")) {
+        return 401;
+    }
+    if (text.starts_with(message, "validation:")) {
+        return 422;
+    }
+    if (text.starts_with(message, "not_found:")) {
+        return 404;
+    }
+    return 500;
+};
+
 fn authenticate(request) : result.Result<appctx.RequestContext, string> {
     var token = token_parser.parse_bearer(server.header(request, "authorization"));
     if (token.tag != 0) {
@@ -114,10 +150,12 @@ export fn init(
     service_value: taskauth.AuthorizedTaskAppService,
     parser: jwt.JwtTokenParser,
     cache_value: taskcache.TaskCache,
+    metrics_value: httpmetrics.HttpMetrics,
     readiness) : void {
     task_service = service_value;
     token_parser = parser;
     list_cache = cache_value;
+    metrics_store = metrics_value;
     readiness_store = readiness;
     dev_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZW1vIn0.0M9FivBe5PZZ0yYavEkiqL3rKEoue2qXKPRabCn6Png";
 };
@@ -127,114 +165,170 @@ export fn route(request: [string]) : string {
         return text_response(200, "text/plain", "");
     }
 
+    if (server.route_equals(request, "GET", "/metrics")) {
+        return text_response(200, "text/plain; version=0.0.4", metrics_store.render());
+    }
+
+    const started_at_ms = time.now_millis();
+
     if (server.route_equals(request, "GET", "/")) {
-        return server.redirect("http://127.0.0.1:8084/");
+        var response = server.redirect("http://127.0.0.1:8084/");
+        metrics_store.observe("GET /", 302, time.now_millis() - started_at_ms);
+        return response;
     }
 
     if (server.route_equals(request, "GET", "/healthz")) {
-        return json_response(200, json.object([
+        var response = json_response(200, json.object([
             json.field("ok", json.encode_bool(true))
         ]));
+        metrics_store.observe("GET /healthz", 200, time.now_millis() - started_at_ms);
+        return response;
     }
 
     if (server.route_equals(request, "GET", "/readyz")) {
-        return ready_response();
+        var response = ready_response();
+        metrics_store.observe("GET /readyz", ready_status(), time.now_millis() - started_at_ms);
+        return response;
     }
 
     if (server.route_equals(request, "POST", "/api/dev/token")) {
-        return json_response(200, json.object([
+        var response = json_response(200, json.object([
             json.field("token", json.encode_string(dev_token))
         ]));
+        metrics_store.observe("POST /api/dev/token", 200, time.now_millis() - started_at_ms);
+        return response;
     }
 
     if (server.route_equals(request, "GET", "/api/v1/tasks")) {
         var auth = authenticate(request);
         if (auth.tag != 0) {
-            return error_response(auth[0]);
+            var response = error_response(auth[0]);
+            metrics_store.observe("GET /api/v1/tasks", error_status(auth[0]), time.now_millis() - started_at_ms);
+            return response;
         }
         var owner_user_id = appctx.user_id(auth[0]);
         var cached_json = list_cache.list_json(owner_user_id);
         if (cached_json != "") {
-            return json_response(200, cached_json);
+            var response = json_response(200, cached_json);
+            metrics_store.observe("GET /api/v1/tasks", 200, time.now_millis() - started_at_ms);
+            return response;
         }
         var listed = task_service.list(auth[0]);
         if (listed.tag != 0) {
-            return error_response(listed[0]);
+            var response = error_response(listed[0]);
+            metrics_store.observe("GET /api/v1/tasks", error_status(listed[0]), time.now_millis() - started_at_ms);
+            return response;
         }
         var response_json = task_list_json(listed[0]);
         list_cache.store_list(owner_user_id, response_json);
         list_cache.ping();
-        return json_response(200, response_json);
+        var response = json_response(200, response_json);
+        metrics_store.observe("GET /api/v1/tasks", 200, time.now_millis() - started_at_ms);
+        return response;
     }
 
     if (server.path_has_prefix(request, "/api/v1/tasks/") && server.method(request) == "GET") {
         var maybe_id = task_id_from_request(request);
         if (maybe_id.tag != 0) {
-            return server.bad_request("invalid task id");
+            var response = server.bad_request("invalid task id");
+            metrics_store.observe("GET /api/v1/tasks/{id}", 400, time.now_millis() - started_at_ms);
+            return response;
         }
         var auth = authenticate(request);
         if (auth.tag != 0) {
-            return error_response(auth[0]);
+            var response = error_response(auth[0]);
+            metrics_store.observe("GET /api/v1/tasks/{id}", error_status(auth[0]), time.now_millis() - started_at_ms);
+            return response;
         }
         var found = task_service.get(auth[0], maybe_id[0]);
         if (found.tag != 0) {
-            return error_response(found[0]);
+            var response = error_response(found[0]);
+            metrics_store.observe("GET /api/v1/tasks/{id}", error_status(found[0]), time.now_millis() - started_at_ms);
+            return response;
         }
-        return json_response(200, domaintask.task_json(found[0]));
+        var response = json_response(200, domaintask.task_json(found[0]));
+        metrics_store.observe("GET /api/v1/tasks/{id}", 200, time.now_millis() - started_at_ms);
+        return response;
     }
 
     if (server.route_equals(request, "POST", "/api/v1/tasks")) {
         var auth = authenticate(request);
         if (auth.tag != 0) {
-            return error_response(auth[0]);
+            var response = error_response(auth[0]);
+            metrics_store.observe("POST /api/v1/tasks", error_status(auth[0]), time.now_millis() - started_at_ms);
+            return response;
         }
         var payload = parse_task_body(server.body(request));
         if (payload.tag != 0) {
-            return server.bad_request("invalid json body");
+            var response = server.bad_request("invalid json body");
+            metrics_store.observe("POST /api/v1/tasks", 400, time.now_millis() - started_at_ms);
+            return response;
         }
-        var created = task_service.create(auth[0], payload[0][0], payload[0][1], payload[0][2]);
+        var created = task_service.create(auth[0], payload[0][0], payload[0][1], payload[0][2], payload[0][3], payload[0][4], payload[0][5], payload[0][6], payload[0][7]);
         if (created.tag != 0) {
-            return error_response(created[0]);
+            var response = error_response(created[0]);
+            metrics_store.observe("POST /api/v1/tasks", error_status(created[0]), time.now_millis() - started_at_ms);
+            return response;
         }
-        return json_response(201, domaintask.task_json(created[0]));
+        var response = json_response(201, domaintask.task_json(created[0]));
+        metrics_store.observe("POST /api/v1/tasks", 201, time.now_millis() - started_at_ms);
+        return response;
     }
 
     if (server.path_has_prefix(request, "/api/v1/tasks/") && server.method(request) == "PUT") {
         var maybe_id = task_id_from_request(request);
         if (maybe_id.tag != 0) {
-            return server.bad_request("invalid task id");
+            var response = server.bad_request("invalid task id");
+            metrics_store.observe("PUT /api/v1/tasks/{id}", 400, time.now_millis() - started_at_ms);
+            return response;
         }
         var auth = authenticate(request);
         if (auth.tag != 0) {
-            return error_response(auth[0]);
+            var response = error_response(auth[0]);
+            metrics_store.observe("PUT /api/v1/tasks/{id}", error_status(auth[0]), time.now_millis() - started_at_ms);
+            return response;
         }
         var payload = parse_task_body(server.body(request));
         if (payload.tag != 0) {
-            return server.bad_request("invalid json body");
+            var response = server.bad_request("invalid json body");
+            metrics_store.observe("PUT /api/v1/tasks/{id}", 400, time.now_millis() - started_at_ms);
+            return response;
         }
-        var updated = task_service.update(auth[0], maybe_id[0], payload[0][0], payload[0][1], payload[0][2]);
+        var updated = task_service.update(auth[0], maybe_id[0], payload[0][0], payload[0][1], payload[0][2], payload[0][3], payload[0][4], payload[0][5], payload[0][6], payload[0][7]);
         if (updated.tag != 0) {
-            return error_response(updated[0]);
+            var response = error_response(updated[0]);
+            metrics_store.observe("PUT /api/v1/tasks/{id}", error_status(updated[0]), time.now_millis() - started_at_ms);
+            return response;
         }
-        return json_response(200, domaintask.task_json(updated[0]));
+        var response = json_response(200, domaintask.task_json(updated[0]));
+        metrics_store.observe("PUT /api/v1/tasks/{id}", 200, time.now_millis() - started_at_ms);
+        return response;
     }
 
     if (server.path_has_prefix(request, "/api/v1/tasks/") && server.method(request) == "DELETE") {
         var maybe_id = task_id_from_request(request);
         if (maybe_id.tag != 0) {
-            return server.bad_request("invalid task id");
+            var response = server.bad_request("invalid task id");
+            metrics_store.observe("DELETE /api/v1/tasks/{id}", 400, time.now_millis() - started_at_ms);
+            return response;
         }
         var auth = authenticate(request);
         if (auth.tag != 0) {
-            return error_response(auth[0]);
+            var response = error_response(auth[0]);
+            metrics_store.observe("DELETE /api/v1/tasks/{id}", error_status(auth[0]), time.now_millis() - started_at_ms);
+            return response;
         }
         var deleted = task_service.delete(auth[0], maybe_id[0]);
         if (deleted.tag != 0) {
-            return error_response(deleted[0]);
+            var response = error_response(deleted[0]);
+            metrics_store.observe("DELETE /api/v1/tasks/{id}", error_status(deleted[0]), time.now_millis() - started_at_ms);
+            return response;
         }
-        return json_response(200, json.object([
+        var response = json_response(200, json.object([
             json.field("deleted", json.encode_bool(true))
         ]));
+        metrics_store.observe("DELETE /api/v1/tasks/{id}", 200, time.now_millis() - started_at_ms);
+        return response;
     }
 
     return text_response(404, "text/plain", "missing");

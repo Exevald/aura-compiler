@@ -8,11 +8,29 @@ fn valid_status(status: string) : bool {
     return status == "todo" or status == "in_progress" or status == "resolved" or status == "done";
 };
 
+fn valid_priority(priority: string) : bool {
+    return priority == "" or priority == "low" or priority == "normal" or priority == "high" or priority == "urgent";
+};
+
 fn normalize_status(status: string) : string {
     if (status == "done") {
         return "resolved";
     }
     return status;
+};
+
+fn normalize_priority(priority: string) : string {
+    if (priority == "") {
+        return "normal";
+    }
+    return priority;
+};
+
+fn normalize_archived(archived: string) : string {
+    if (archived == "true" or archived == "1" or archived == "yes") {
+        return "true";
+    }
+    return "false";
 };
 
 fn validation_error(message: string) : result.Result<domaintask.Task, string> {
@@ -23,7 +41,12 @@ export fn create_new_task(
     owner_user_id: string,
     title: string,
     description: string,
-    status: string) : result.Result<domaintask.Task, string> {
+    status: string,
+    priority: string,
+    due_date: string,
+    tags: string,
+    archived: string,
+    checklist: string) : result.Result<domaintask.Task, string> {
     if (owner_user_id == "") {
         return validation_error("owner user id is required");
     }
@@ -33,19 +56,42 @@ export fn create_new_task(
     if (!valid_status(status)) {
         return validation_error("status must be one of todo, in_progress, resolved");
     }
-    return result.Ok(domaintask.Task(0, owner_user_id, title, description, normalize_status(status), "", ""));
+    if (!valid_priority(priority)) {
+        return validation_error("priority must be one of low, normal, high, urgent");
+    }
+    return result.Ok(domaintask.Task(
+        0,
+        owner_user_id,
+        title,
+        description,
+        normalize_status(status),
+        normalize_priority(priority),
+        due_date,
+        tags,
+        normalize_archived(archived),
+        checklist,
+        "",
+        ""));
 };
 
 export fn update_task(
     existing: domaintask.Task,
     title: string,
     description: string,
-    status: string) : result.Result<domaintask.Task, string> {
+    status: string,
+    priority: string,
+    due_date: string,
+    tags: string,
+    archived: string,
+    checklist: string) : result.Result<domaintask.Task, string> {
     if (title == "") {
         return validation_error("title is required");
     }
     if (!valid_status(status)) {
         return validation_error("status must be one of todo, in_progress, resolved");
+    }
+    if (!valid_priority(priority)) {
+        return validation_error("priority must be one of low, normal, high, urgent");
     }
     return result.Ok(domaintask.Task(
         existing.id,
@@ -53,6 +99,11 @@ export fn update_task(
         title,
         description,
         normalize_status(status),
+        normalize_priority(priority),
+        due_date,
+        tags,
+        normalize_archived(archived),
+        checklist,
         existing.created_at,
         existing.updated_at));
 };

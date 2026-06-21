@@ -51,11 +51,77 @@ services:
       AUTH_JWT_SECRET: "dev-secret"
     ports:
       - "8082:8082"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8082/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
     depends_on:
       mysql:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: aura-microservicetemplate-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      app:
+        condition: service_healthy
+
+  loki:
+    image: grafana/loki:latest
+    container_name: aura-microservicetemplate-loki
+    command:
+      - -config.file=/etc/loki/loki.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+
+  alloy:
+    image: grafana/alloy:latest
+    container_name: aura-microservicetemplate-alloy
+    command:
+      - run
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /home/exevald.linux/.local/share/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      loki:
+        condition: service_started
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: aura-microservicetemplate-grafana
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Editor"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
 
   ai-gateway:
     image: aura-ai-gateway:local
@@ -65,10 +131,11 @@ services:
     container_name: aura-ai-gateway
     working_dir: /app/microservicetemplate/ai_gateway
     environment:
-      AI_GATEWAY_PROVIDER_URL: "https://api.openai.com/v1/chat/completions"
-      AI_GATEWAY_API_KEY: ""
-      AI_GATEWAY_MODE: "mock"
-      AI_GATEWAY_MODEL: "qwen-plus"
+      AI_GATEWAY_PROVIDER_URL: "${AI_GATEWAY_PROVIDER_URL:-https://generativelanguage.googleapis.com/v1beta/openai/chat/completions}"
+      AI_GATEWAY_API_KEY: "${AI_GATEWAY_API_KEY:-}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      AI_GATEWAY_MODE: "${AI_GATEWAY_MODE:-real}"
+      AI_GATEWAY_MODEL: "${AI_GATEWAY_MODEL:-gemini-3.5-flash}"
       AI_GATEWAY_HTTP_PORT: "8084"
     ports:
       - "8084:8084"
@@ -79,5 +146,24 @@ services:
       retries: 20
       start_period: 15s
 
+  task-manager-app:
+    image: aura-task-manager-app:local
+    build:
+      context: ./mylanguage
+      dockerfile: Dockerfile
+    container_name: aura-task-manager-app
+    working_dir: /app
+    ports:
+      - "5900:5900"
+      - "6080:6080"
+    depends_on:
+      app:
+        condition: service_healthy
+      ai-gateway:
+        condition: service_healthy
+
 volumes:
   mysql-data:
+  prometheus-data:
+  loki-data:
+  grafana-data:

@@ -404,7 +404,7 @@ struct Actor
 	~Actor()
 	{
 		{
-			std::lock_guard<std::mutex> lock(mutex);
+			std::lock_guard lock(mutex);
 			stopping = true;
 		}
 		worker.request_stop();

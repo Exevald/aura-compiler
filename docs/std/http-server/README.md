@@ -70,9 +70,15 @@ var method = server.method(request);
 
 Возвращает request body как строку.
 
+### `header(request: HttpRequest, name: string) : string`
+
+Возвращает значение header по имени.
+
 ### `path_segments(request: HttpRequest) : [string]`
 
-Разбивает path на сегменты.
+Разбивает path на сегменты через `/`.
+
+- Результат включает пустые элементы для leading/trailing slash.
 
 ### `segment(request: HttpRequest, index: int) : string`
 
@@ -85,6 +91,10 @@ var method = server.method(request);
 ### `path_suffix_after_prefix(request: HttpRequest, prefix: string) : string`
 
 Возвращает остаток path после заданного префикса.
+
+- Если prefix не совпадает с началом path, возвращает пустую строку.
+- Если suffix после prefix содержит еще один `/`, возвращает пустую строку.
+- Это helper для простого path routing.
 
 ### `route_equals(request: HttpRequest, method: string, path: string) : bool`
 
@@ -147,19 +157,4 @@ var app = middleware.chain(route, [
     middleware.request_logger,
     middleware.with_response_header("X-Service", "example")
 ]);
-```
-
-## Middleware
-
-`std.http.middleware` предоставляет базовый middleware-chain поверх `(request) -> string` handlers.
-
-```aura
-import std.http.middleware as middleware;
-
-var app = middleware.chain(route, [
-    middleware.request_logger,
-    middleware.with_response_header("X-Service", "example")
-]);
-
-server.listen_and_serve("0.0.0.0", 8080, app);
 ```

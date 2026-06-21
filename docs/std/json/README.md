@@ -54,6 +54,10 @@
 
 Извлекает top-level поле и интерпретирует его как целое число.
 
+### `has_key(object_json: string, key: string) : bool`
+
+Проверяет наличие top-level поля в JSON object.
+
 ### `get_bool(object_json: string, key: string) : bool`
 
 Извлекает top-level поле и интерпретирует его как `true` или `false`.

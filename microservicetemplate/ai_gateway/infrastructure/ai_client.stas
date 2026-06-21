@@ -21,6 +21,13 @@ func mock_summary_response(string prompt): string {
     return "Board summary: prioritize blockers, keep work moving, and resolve the oldest open items first.";
 }
 
+func request_instructions(string kind): string {
+    if (kind == "highlight") {
+        return "You are helping prioritize tasks. Return at most three lines. Each line must use the format id|reason. Prefer unresolved tasks with the highest impact or blocking risk.";
+    }
+    return "You are summarizing a task board. Write one short paragraph with the current state and next actions.";
+}
+
 impl AiClient<Ready>
 {
     public func ask(string kind, string prompt, string temp) -> AiClient<Answered> {
@@ -36,11 +43,11 @@ impl AiClient<Ready>
 
         const string body =
             '{"model": "' + json_escape(this.model) + '",' +
-            '"temperature": ' + temp + ',' +
             '"messages": [' +
-                '{"role": "system", "content": "You are a task tracker assistant."},' +
+                '{"role": "system", "content": "' + json_escape(request_instructions(kind)) + '"},' +
                 '{"role": "user", "content": "' + json_escape(prompt) + '"}' +
-            ']}';
+            '],' +
+            '"temperature": ' + temp + '}';
 
         let HttpRequest reqInit = new HttpRequest<Idle>();
         let HttpRequest reqBuild = reqInit

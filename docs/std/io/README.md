@@ -44,6 +44,14 @@ var token = io.read();
 var line = io.readln();
 ```
 
+### `read_file(path: string) : string`
+
+Читает весь файл по пути и возвращает его содержимое строкой.
+
+```aura
+var contents = io.read_file("samples/input.txt");
+```
+
 ## Пример
 
 ```aura

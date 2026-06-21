@@ -4,6 +4,30 @@
 
 ## Функции
 
+### `remove<T>(values: [T], item: T) : [T]`
+
+Удаляет первое совпадение `item` из массива.
+
+- Поведение совпадает с `std.core.remove`.
+- Если элемент отсутствует, массив остается без изменений.
+
+```aura
+var xs = [1, 2, 2, 3];
+arr.remove(xs, 2);
+```
+
+### `remove_at<T>(values: [T], index: int) : [T]`
+
+Удаляет элемент по индексу.
+
+- Поведение совпадает с `std.core.remove_at`.
+- При выходе за пределы индекса runtime поднимет ошибку.
+
+```aura
+var xs = [1, 2, 3];
+arr.remove_at(xs, 1);
+```
+
 ### `len<T>(values: [T]) : int`
 
 Возвращает текущее количество элементов массива.
@@ -52,5 +76,6 @@ import std.array as arr;
 var xs = [3, 1, 2];
 arr.push(xs, 4);
 arr.sort(xs);
+arr.remove(xs, 1);
 var last = arr.pop(xs);
 ```

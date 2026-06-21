@@ -16,12 +16,30 @@ fn require_user(ctx: appctx.RequestContext) : result.Result<bool, string> {
 struct AuthorizedTaskAppService implements taskapp.TaskAppService {
     inner: taskapp.TaskApplicationService;
 
-    fn create(ctx: appctx.RequestContext, title: string, description: string, status: string) : result.Result<domaintask.Task, string> {
+    fn create(
+        ctx: appctx.RequestContext,
+        title: string, 
+        description: string, 
+        status: string, 
+        priority: string, 
+        due_date: string, 
+        tags: string, 
+        archived: string, 
+        checklist: string) : result.Result<domaintask.Task, string> {
         var allowed = require_user(ctx);
         if (allowed.tag != 0) {
             return result.Err(allowed[0]);
         }
-        return self.inner.create(ctx, title, description, status);
+        return self.inner.create(
+            ctx,
+            title, 
+            description, 
+            status, 
+            priority, 
+            due_date, 
+            tags, 
+            archived, 
+            checklist);
     }
 
     fn get(ctx: appctx.RequestContext, id: int) : result.Result<domaintask.Task, string> {
@@ -40,12 +58,12 @@ struct AuthorizedTaskAppService implements taskapp.TaskAppService {
         return self.inner.list(ctx);
     }
 
-    fn update(ctx: appctx.RequestContext, id: int, title: string, description: string, status: string) : result.Result<domaintask.Task, string> {
+    fn update(ctx: appctx.RequestContext, id: int, title: string, description: string, status: string, priority: string, due_date: string, tags: string, archived: string, checklist: string) : result.Result<domaintask.Task, string> {
         var allowed = require_user(ctx);
         if (allowed.tag != 0) {
             return result.Err(allowed[0]);
         }
-        return self.inner.update(ctx, id, title, description, status);
+        return self.inner.update(ctx, id, title, description, status, priority, due_date, tags, archived, checklist);
     }
 
     fn delete(ctx: appctx.RequestContext, id: int) : result.Result<bool, string> {
@@ -58,3 +76,7 @@ struct AuthorizedTaskAppService implements taskapp.TaskAppService {
 }
 
 export AuthorizedTaskAppService;
+
+export fn new(inner: taskapp.TaskApplicationService) : AuthorizedTaskAppService {
+    return AuthorizedTaskAppService(inner);
+};

@@ -9,6 +9,11 @@ struct Task {
     title: string;
     description: string;
     status: string;
+    priority: string;
+    due_date: string;
+    tags: string;
+    archived: string;
+    checklist: string;
     created_at: string;
     updated_at: string;
 }
@@ -21,6 +26,11 @@ fn task_json(value: Task) : string {
         json.field("title", json.encode_string(value.title)),
         json.field("description", json.encode_string(value.description)),
         json.field("status", json.encode_string(value.status)),
+        json.field("priority", json.encode_string(value.priority)),
+        json.field("due_date", json.encode_string(value.due_date)),
+        json.field("tags", json.encode_string(value.tags)),
+        json.field("archived", json.encode_bool(value.archived == "true")),
+        json.field("checklist", json.encode_string(value.checklist)),
         json.field("created_at", json.encode_string(value.created_at)),
         json.field("updated_at", json.encode_string(value.updated_at))
     ]);
@@ -29,10 +39,10 @@ fn task_json(value: Task) : string {
 export task_json;
 
 interface TaskRepository {
-    fn create(owner_user_id: string, title: string, description: string, status: string) : Task;
+    fn create(owner_user_id: string, title: string, description: string, status: string, priority: string, due_date: string, tags: string, archived: string, checklist: string) : Task;
     fn find_by_id_for_owner(id: int, owner_user_id: string) : option.Option<Task>;
     fn list_for_owner(owner_user_id: string) : [Task];
-    fn update_for_owner(id: int, owner_user_id: string, title: string, description: string, status: string) : option.Option<Task>;
+    fn update_for_owner(id: int, owner_user_id: string, title: string, description: string, status: string, priority: string, due_date: string, tags: string, archived: string, checklist: string) : option.Option<Task>;
     fn delete_for_owner(id: int, owner_user_id: string) : bool;
 }
 

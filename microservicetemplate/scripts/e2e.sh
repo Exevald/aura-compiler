@@ -7,6 +7,9 @@ COMPOSE_FILE="$ROOT_DIR/microservicetemplate/docker-compose.yml"
 BASE_URL="${BASE_URL:-http://127.0.0.1:8082}"
 JWT_SECRET="${AUTH_JWT_SECRET:-dev-secret}"
 APP_CONTAINER="${APP_CONTAINER:-aura-microservicetemplate-app}"
+TASK_MANAGER_CONTAINER="${TASK_MANAGER_CONTAINER:-aura-task-manager-app}"
+export AI_GATEWAY_MODE="${AI_GATEWAY_MODE:-mock}"
+export AI_GATEWAY_MODEL="${AI_GATEWAY_MODEL:-gemini-3.5-flash}"
 
 if docker compose version >/dev/null 2>&1; then
     COMPOSE=(docker compose)
@@ -118,10 +121,11 @@ trap cleanup EXIT
 cleanup
 compose build app
 compose build ai-gateway
+compose build task-manager-app
 compose up -d mysql
 compose run --rm migrate
 compose up -d app
-compose up -d ai-gateway
+compose up -d prometheus loki alloy grafana ai-gateway task-manager-app
 
 for _ in $(seq 1 60); do
     if docker exec "$APP_CONTAINER" bash -lc 'exec 3<>/dev/tcp/127.0.0.1/8082' >/dev/null 2>&1; then
@@ -140,6 +144,41 @@ for _ in $(seq 1 60); do
     sleep 1
 done
 
+for _ in $(seq 1 60); do
+    if curl -fsS http://127.0.0.1:9090/-/ready >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+for _ in $(seq 1 60); do
+    if curl -fsS http://127.0.0.1:3100/ready >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+for _ in $(seq 1 60); do
+    if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+for _ in $(seq 1 60); do
+    task_manager_state="$(docker inspect -f '{{.State.Status}}' "$TASK_MANAGER_CONTAINER" 2>/dev/null || true)"
+    if [[ "$task_manager_state" == "running" ]]; then
+        break
+    fi
+    sleep 1
+done
+
+smoke_output="$(
+    compose run --rm --no-deps task-manager-app \
+        /src/mylanguage/build/MyLanguage /src/mylanguage/build/taskManagerApp/smoke.rocket
+)"
+assert_contains "$smoke_output" "TASKMANAGER_SMOKE_OK"
+
 user_a_token="$(jwt_for user-a)"
 user_b_token="$(jwt_for user-b)"
 
@@ -154,7 +193,7 @@ assert_contains "$options_response" "Access-Control-Allow-Origin: *"
 unauthorized="$(request GET /api/v1/tasks)"
 assert_status "$unauthorized" 401
 
-created="$(request POST /api/v1/tasks "$user_a_token" '{"title":"first","description":"created","status":"todo"}')"
+created="$(request POST /api/v1/tasks "$user_a_token" '{"title":"first","description":"created","status":"todo","priority":"high","due_date":"2026-06-20","tags":"alpha,beta","archived":"false","checklist":"draft; review"}')"
 assert_status "$created" 201
 created_body="${created%$'\n'*}"
 task_id="$(printf '%s' "$created_body" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')"
@@ -166,14 +205,18 @@ fi
 listed="$(request GET /api/v1/tasks "$user_a_token")"
 assert_status "$listed" 200
 printf '%s' "$listed" | grep -q '"title":"first"'
+printf '%s' "$listed" | grep -q '"priority":"high"'
+printf '%s' "$listed" | grep -q '"archived":false'
 
-updated="$(request PUT "/api/v1/tasks/$task_id" "$user_a_token" '{"title":"updated","description":"changed","status":"resolved"}')"
+updated="$(request PUT "/api/v1/tasks/$task_id" "$user_a_token" '{"title":"updated","description":"changed","status":"resolved","priority":"urgent","due_date":"2026-06-21","tags":"alpha,release","archived":"false","checklist":"draft; review; ship"}')"
 assert_status "$updated" 200
 printf '%s' "$updated" | grep -q '"status":"resolved"'
+printf '%s' "$updated" | grep -q '"priority":"urgent"'
 
 listed_after_update="$(request GET /api/v1/tasks "$user_a_token")"
 assert_status "$listed_after_update" 200
 printf '%s' "$listed_after_update" | grep -q '"title":"updated"'
+printf '%s' "$listed_after_update" | grep -q '"checklist":"draft; review; ship"'
 
 other_user_get="$(request GET "/api/v1/tasks/$task_id" "$user_b_token")"
 assert_status "$other_user_get" 404
@@ -189,18 +232,40 @@ if printf '%s' "$listed_after_delete" | grep -q "\"id\":$task_id"; then
     exit 1
 fi
 
-gateway_root="$(gateway_request GET /)"
-assert_status "$gateway_root" 200
-assert_contains "$gateway_root" "<link rel=\"stylesheet\" href=\"/styles.css\">"
-assert_contains "$gateway_root" "<script defer src=\"/app.js\"></script>"
+app_metrics="$(curl -fsS http://127.0.0.1:8082/metrics)"
+assert_contains "$app_metrics" 'microservicetemplate_http_requests_total{method="GET",route="/api/v1/tasks"}'
+assert_contains "$app_metrics" 'microservicetemplate_http_request_duration_seconds_bucket{le="0.1"}'
 
-styles_response="$(gateway_request GET /styles.css)"
-assert_status "$styles_response" 200
-assert_contains "$styles_response" "Content-Type: text/css"
+prometheus_query=""
+for _ in $(seq 1 60); do
+    prometheus_query="$(
+        curl -sS --get \
+            --data-urlencode 'query=microservicetemplate_http_requests_total' \
+            http://127.0.0.1:9090/api/v1/query || true
+    )"
+    if printf '%s' "$prometheus_query" | grep -Fq '"route":"/api/v1/tasks"'; then
+        break
+    fi
+    sleep 1
+done
+assert_contains "$prometheus_query" '"route":"/api/v1/tasks"'
 
-script_response="$(gateway_request GET /app.js)"
-assert_status "$script_response" 200
-assert_contains "$script_response" "Content-Type: application/javascript"
+grafana_health="$(curl -fsS http://127.0.0.1:3000/api/health)"
+assert_contains "$grafana_health" '"database":"ok"'
+
+loki_query=""
+for _ in $(seq 1 60); do
+    loki_query="$(
+        curl -sS --get \
+            --data-urlencode 'query={compose_project="microservicetemplate"}' \
+            http://127.0.0.1:3100/loki/api/v1/query_range || true
+    )"
+    if printf '%s' "$loki_query" | grep -Fq '"compose_service":"app"'; then
+        break
+    fi
+    sleep 1
+done
+assert_contains "$loki_query" '"compose_service":"app"'
 
 gateway_health="$(gateway_request GET /healthz)"
 assert_status "$gateway_health" 200
@@ -213,12 +278,12 @@ assert_contains "$gateway_ready" '"status": "ready"'
 gateway_options="$(gateway_request OPTIONS /api/highlight)"
 assert_status "$gateway_options" 200
 
-ai_highlight="$(gateway_request POST /api/highlight '{"prompt":"You are helping prioritize tasks.\nTASK|1|todo|first|created\nTASK|2|resolved|done|closed","temperature":0.2}')"
+ai_highlight="$(gateway_request POST /api/highlight '{"prompt":"You are helping prioritize tasks.\nTASK|1|todo|high|false|2026-06-20|alpha,beta|draft; review|first|created\nTASK|2|resolved|normal|true|2026-06-19|closed|done|closed","temperature":0.2}')"
 assert_status "$ai_highlight" 200
 assert_contains "$ai_highlight" '"response": "1|'
 
-ai_summary="$(gateway_request POST /api/summary '{"prompt":"You are summarizing a task board.\nTASK|1|todo|first|created\nTASK|2|resolved|done|closed","temperature":0.2}')"
+ai_summary="$(gateway_request POST /api/summary '{"prompt":"You are summarizing a task board.\nTASK|1|todo|high|false|2026-06-20|alpha,beta|draft; review|first|created\nTASK|2|resolved|normal|true|2026-06-19|closed|done|closed","temperature":0.2}')"
 assert_status "$ai_summary" 200
-assert_contains "$ai_summary" '"response": "Board has'
+assert_contains "$ai_summary" '"response": "Board summary:'
 
 printf 'MICROSERVICE_E2E_OK\n'

@@ -3,6 +3,7 @@ module microservicetemplate.cmd.migrate;
 import std.config as config;
 import std.db.mysql as db;
 import std.io as io;
+import std.text as text;
 
 const dsn = config.require("MYSQL_DSN");
 const conn = db.open(dsn);
@@ -11,4 +12,28 @@ const migration_sql = io.read_file("data/001_task.sql");
 const result = db.exec_stmt(conn, migration_sql, []);
 
 io.println("migration affected rows =", db.affected_rows(result));
+
+const column_check = db.query_one(
+    conn,
+    "SELECT COUNT(*) AS cnt FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'task' AND column_name = 'priority'",
+    []);
+if (db.is_null(column_check)) {
+    io.println("metadata migration skipped: unable to inspect schema");
+} else {
+    const existing_columns = text.to_int(text.to_string(db.get(column_check, "cnt")));
+    if (existing_columns == 0) {
+        const result_002_1 = db.exec_stmt(conn, "ALTER TABLE task ADD COLUMN priority VARCHAR(16) NOT NULL DEFAULT 'normal'", []);
+        io.println("migration affected rows =", db.affected_rows(result_002_1));
+        const result_002_2 = db.exec_stmt(conn, "ALTER TABLE task ADD COLUMN due_date VARCHAR(32) NOT NULL DEFAULT ''", []);
+        io.println("migration affected rows =", db.affected_rows(result_002_2));
+        const result_002_3 = db.exec_stmt(conn, "ALTER TABLE task ADD COLUMN tags VARCHAR(1024) NOT NULL DEFAULT ''", []);
+        io.println("migration affected rows =", db.affected_rows(result_002_3));
+        const result_002_4 = db.exec_stmt(conn, "ALTER TABLE task ADD COLUMN archived VARCHAR(8) NOT NULL DEFAULT 'false'", []);
+        io.println("migration affected rows =", db.affected_rows(result_002_4));
+        const result_002_5 = db.exec_stmt(conn, "ALTER TABLE task ADD COLUMN checklist VARCHAR(2048) NOT NULL DEFAULT ''", []);
+        io.println("migration affected rows =", db.affected_rows(result_002_5));
+    } else {
+        io.println("metadata migration skipped: columns already present");
+    }
+}
 db.close(conn);

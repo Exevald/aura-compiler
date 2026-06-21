@@ -15,6 +15,7 @@ Aura — компилируемый язык со статической гра�
 
 - [Язык Aura](./language/README.md)
 - [Стандартная библиотека](./std/README.md)
+- [Реализация Aura](./implementation/README.md)
 - [Деплой Aura-сервисов](./deployment/README.md)
 - [Техническая презентация Aura](./AURA_PRESENTATION.md)
 

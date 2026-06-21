@@ -77,6 +77,30 @@ var xs = [1, 2, 3];
 var last = core.pop(xs);
 ```
 
+### `remove<T>(values: [T], item: T) : [T]`
+
+Удаляет первое вхождение `item` из массива и возвращает тот же массив.
+
+- Если элемент не найден, массив не меняется.
+- Использует runtime equality.
+
+```aura
+var xs = [1, 2, 2, 3];
+core.remove(xs, 2);
+```
+
+### `remove_at<T>(values: [T], index: int) : [T]`
+
+Удаляет элемент по индексу и возвращает тот же массив.
+
+- Индекс должен быть в пределах массива.
+- Операция меняет массив на месте через transactional runtime state.
+
+```aura
+var xs = [1, 2, 3];
+core.remove_at(xs, 1);
+```
+
 ### `concat(left: string, right: string) : string`
 
 Конкатенирует две строки.
@@ -142,6 +166,7 @@ import std.core as core;
 
 var xs = core.sort([3, 1, 2]);
 var top = core.pop(xs);
+core.remove(xs, top);
 var n = core.to_int("42");
 var s = core.concat("au", "ra");
 var clamped = core.clamp(15, 0, 10);

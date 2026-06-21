@@ -13,7 +13,6 @@
       <div>
         <p class="eyebrow">Task tracker</p>
         <h1>Pipeline board</h1>
-        <p class="subtitle">Светлый интерфейс в виде pipeline: задачи проходят стадии `todo`, `in_progress`, `resolved`, а AI помогает выделить главное и дать краткое резюме.</p>
       </div>
       <div class="hero-actions">
         <button class="ghost" id="refreshBtn">Refresh</button>
@@ -38,9 +37,53 @@
         <span>Total</span>
         <strong id="countTotal">0</strong>
       </div>
+      <div class="flow-stat">
+        <span>Archived</span>
+        <strong id="countArchived">0</strong>
+      </div>
+    </section>
+
+    <section class="panel board-toolbar">
+      <div class="board-toolbar-main">
+        <label class="field compact">
+          <span>Search</span>
+          <input id="searchInput" type="search" placeholder="title, description, tags" />
+        </label>
+        <label class="field compact">
+          <span>Priority</span>
+          <select id="priorityFilterInput">
+            <option value="">All priorities</option>
+            <option value="urgent">urgent</option>
+            <option value="high">high</option>
+            <option value="normal">normal</option>
+            <option value="low">low</option>
+          </select>
+        </label>
+        <label class="field compact">
+          <span>Tag</span>
+          <input id="tagFilterInput" type="text" placeholder="frontend, api, docs" />
+        </label>
+        <label class="field compact inline">
+          <input id="showArchivedInput" type="checkbox" />
+          <span>Show archived</span>
+        </label>
+      </div>
+      <div class="board-toolbar-actions">
+        <button id="clearFiltersBtn" class="ghost">Clear filters</button>
+      </div>
     </section>
 
     <main class="layout">
+      <section class="panel archive-panel" id="archivePanel">
+        <div class="panel-head">
+          <strong>Archive</strong>
+          <span class="muted" id="archiveCount">0 tasks</span>
+        </div>
+        <div class="panel-body">
+          <div class="archive-lane" id="archiveLane"></div>
+        </div>
+      </section>
+
       <section class="panel pipeline-panel">
         <div class="panel-head">
           <strong>Pipeline</strong>
@@ -85,6 +128,33 @@
                 <option value="resolved">resolved</option>
               </select>
             </label>
+            <div class="grid-2">
+              <label class="field">
+                <span>Priority</span>
+                <select id="priorityInput">
+                  <option value="normal">normal</option>
+                  <option value="low">low</option>
+                  <option value="high">high</option>
+                  <option value="urgent">urgent</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Due date</span>
+                <input id="dueDateInput" type="date" />
+              </label>
+            </div>
+            <label class="field">
+              <span>Tags</span>
+              <input id="tagsInput" type="text" placeholder="frontend, api, docs" />
+            </label>
+            <label class="field">
+              <span>Checklist</span>
+              <textarea id="checklistInput" placeholder="One item per line"></textarea>
+            </label>
+            <label class="field inline">
+              <input id="archivedInput" type="checkbox" />
+              <span>Archived</span>
+            </label>
 
             <div class="row">
               <button class="primary" id="submitTaskBtn">Create</button>
@@ -96,7 +166,6 @@
         <section class="panel">
           <div class="panel-head">
             <strong>AI actions</strong>
-            <span class="muted">Mock mode by default</span>
           </div>
           <div class="panel-body stack">
             <div class="row">

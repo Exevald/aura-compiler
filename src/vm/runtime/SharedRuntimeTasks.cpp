@@ -22,35 +22,36 @@ Core::TaskPtr SharedRuntime::SpawnTask(TaskRunner runner)
 		m_tasks.emplace(taskId, state);
 	}
 
-	state->worker = std::jthread([state, runner = std::move(runner)](std::stop_token stopToken) mutable {
-		TaskOutcome outcome;
-		try
-		{
-			outcome = runner(stopToken);
-		}
-		catch (const std::exception& ex)
-		{
-			outcome.ok = false;
-			outcome.error = ex.what();
-		}
-		catch (...)
-		{
-			outcome.ok = false;
-			outcome.error = "Unhandled task exception";
-		}
-
-		{
-			std::lock_guard lock(state->mutex);
-			state->completed = true;
-			state->result = std::move(outcome.result);
-			state->error = outcome.ok ? std::string{} : std::move(outcome.error);
-			if (stopToken.stop_requested())
+	state->worker = std::jthread(
+		[state, runner = std::move(runner)](const std::stop_token& stopToken) mutable {
+			TaskOutcome outcome;
+			try
 			{
-				state->cancelled = true;
+				outcome = runner(stopToken);
 			}
-		}
-		state->cv.notify_all();
-	});
+			catch (const std::exception& ex)
+			{
+				outcome.ok = false;
+				outcome.error = ex.what();
+			}
+			catch (...)
+			{
+				outcome.ok = false;
+				outcome.error = "Unhandled task exception";
+			}
+
+			{
+				std::lock_guard lock(state->mutex);
+				state->completed = true;
+				state->result = std::move(outcome.result);
+				state->error = outcome.ok ? std::string{} : std::move(outcome.error);
+				if (stopToken.stop_requested())
+				{
+					state->cancelled = true;
+				}
+			}
+			state->cv.notify_all();
+		});
 
 	return TaskHandle(taskId);
 }

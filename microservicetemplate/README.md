@@ -1,8 +1,8 @@
 # microservicetemplate
 
-Шаблон CRUD-микросервиса на Aura с DDD-слоями, MySQL-backed `TaskRepository`, JWT bearer auth и actor-backed read-cache для списка задач.
+Шаблон CRUD-микросервиса на Aura с DDD-слоями, MySQL-backed `TaskRepository`, JWT bearer auth, actor-backed read-cache для списка задач и локальным observability stack на Prometheus + Loki + Grafana.
 
-Рядом добавлен отдельный `ai_gateway` на Stasis. Он отдаёт светлый pipeline-фронтенд из `index.html`, `styles.css` и `app.js`, а также AI-endpoints для highlight/summary; сам `microservicetemplate` остаётся чистым API задач.
+Пользовательский интерфейс теперь вынесен в нативный `taskManagerApp` из `MyLanguage`, который запускается отдельным Docker-контейнером. Он ходит в `microservicetemplate` по bearer JWT и вызывает `ai-gateway` для highlight/summary.
 
 ## Быстрая проверка
 
@@ -71,11 +71,11 @@ make test-e2e
 Сборка и запуск из корня репозитория:
 
 ```bash
-docker compose -f microservicetemplate/docker-compose.yml build app ai-gateway
+docker compose -f microservicetemplate/docker-compose.yml build app ai-gateway task-manager-app
 docker compose -f microservicetemplate/docker-compose.yml up mysql -d
 docker compose -f microservicetemplate/docker-compose.yml run --rm migrate
 docker compose -f microservicetemplate/docker-compose.yml up app
-docker compose -f microservicetemplate/docker-compose.yml up ai-gateway
+docker compose -f microservicetemplate/docker-compose.yml up prometheus loki alloy grafana ai-gateway task-manager-app
 ```
 
 Compose использует build context от корня `aura-compiler`, потому что контейнерам нужны:
@@ -85,9 +85,36 @@ Compose использует build context от корня `aura-compiler`, по
 - Linux-зависимости MySQL client и CURL headers в build image (`default-libmysqlclient-dev`, `libcurl4-openssl-dev`)
 - `clang-tools-18` в build image, чтобы CMake мог вызвать `clang-scan-deps`
 - `git` в build image, потому что Stasis CMake подтягивает Catch2 через `FetchContent`
+- исходники `aura-compiler/microservicetemplate/mylanguage`, где лежит vendored `MyLanguage` и `taskManagerApp`
 
-`ai_gateway` собирает Stasis compiler внутри Docker image из vendored `microservicetemplate/stasis-src`, а затем запускает UI из `microservicetemplate/web`. Браузерный UI открывается на `http://127.0.0.1:8084/`.
+`ai_gateway` собирает Stasis compiler внутри Docker image из vendored `microservicetemplate/stasis-src` и остаётся отдельным AI-сервисом на `http://127.0.0.1:8084/`.
+По умолчанию он ходит в Gemini OpenAI-compatible endpoint (`POST /v1beta/openai/chat/completions`) с моделью `gemini-3.5-flash`; API key передаётся через `AI_GATEWAY_API_KEY` или `GEMINI_API_KEY` и должен приходить из окружения, не из репозитория.
+Для обратной совместимости старые значения `gpt-5.4` и `gpt-5.4-medium` автоматически нормализуются в `gemini-3.5-flash`.
+Если нужен локальный офлайн-фоллбек, можно явно поставить `AI_GATEWAY_MODE=mock`.
 В runtime-образ также копируется `microservicetemplate/stasis-src/grammar`, потому что собранный compiler ожидает grammar по пути `/src/stasis/grammar`.
+
+`prometheus` scrape'ит `http://app:8082/metrics`, `loki` собирает container logs через Alloy, а `grafana` открывается на `http://localhost:3000/` и получает provisioned datasources + dashboards.
+
+`task-manager-app` собирается из `microservicetemplate/mylanguage/Dockerfile`, запускает `taskManagerApp/main.rocket` и по сети использует:
+
+- `http://app:8082` для CRUD задач и `POST /api/dev/token`
+- `http://ai-gateway:8084` для highlight/summary
+
+`task-manager-app` по умолчанию поднимает `Xvfb` внутри контейнера и публикует noVNC на `6080`. Это убирает зависимость от XQuartz/X11 и внешнего VNC-клиента.
+
+Чтобы посмотреть окно:
+
+```bash
+docker compose -f microservicetemplate/docker-compose.yml up -d task-manager-app
+```
+
+Открывай в браузере:
+
+```bash
+open http://localhost:6080/vnc.html
+```
+
+Если `localhost` не подходит в твоей среде, используй IP Lima VM, например `http://192.168.5.15:6080/vnc.html`.
 
 ## Docker Image
 
@@ -149,6 +176,7 @@ kubectl apply -f microservicetemplate/k8s/app-service.yaml
 
 - `GET /healthz`
 - `GET /readyz`
+- `GET /metrics`
 - `GET /api/v1/tasks`
 - `GET /api/v1/tasks/{id}`
 - `POST /api/v1/tasks`
@@ -156,10 +184,35 @@ kubectl apply -f microservicetemplate/k8s/app-service.yaml
 - `DELETE /api/v1/tasks/{id}`
 - `POST /api/dev/token`
 
+## Observability
+
+Grafana открывается на `http://localhost:3000/` без логина и уже видит datasource `Prometheus`.
+Отдельно есть datasource `Loki` и dashboard `microservicetemplate container logs`.
+
+Панели в dashboard:
+
+- requests/sec
+- error rate
+- latency p95
+- top routes
+
+Prometheus открыт на `http://localhost:9090/` и scrape'ит `app:8082/metrics`.
+Loki открыт на `http://localhost:3100/`, Alloy читает Docker socket и отправляет логи контейнеров в Loki.
+
+Быстрая проверка:
+
+```bash
+curl -s http://127.0.0.1:8082/metrics | grep microservicetemplate_http_requests_total
+curl -s "http://127.0.0.1:9090/api/v1/query?query=microservicetemplate_http_requests_total" | grep route
+```
+
 ## Build Notes
 
 - `microservicetemplate/bin/stl` должен быть синхронизирован из `~/study/stasis/bin/stl` перед сборкой `ai_gateway`.
 - Linux-сборка Stasis больше не требует ручной правки пути к MySQL: CMake ищет стандартные каталоги `/usr/include`, `/usr/lib/x86_64-linux-gnu` и родственные.
+- `taskManagerApp` image использует `cmake 3.30+` из `pip`, `clang-tools-18` для `clang-scan-deps` и `nlohmann-json3-dev` для `nlohmann/json.hpp`.
+- Grafana provisioning лежит в `microservicetemplate/observability/grafana/`, Prometheus config в `microservicetemplate/observability/prometheus/`.
+- Loki config лежит в `microservicetemplate/observability/loki/`, Alloy config в `microservicetemplate/observability/alloy/`.
 - Если Docker на Lima упирается в место, сначала чисти builder/image cache в VM:
 
 ```bash
@@ -175,12 +228,20 @@ limactl shell docker docker volume prune -f
 
 - health: `http://127.0.0.1:8084/healthz`
 - ready: `http://127.0.0.1:8084/readyz`
-- UI: `http://127.0.0.1:8084/`
-- assets: `GET /styles.css`, `GET /app.js`
 - highlight: `POST http://127.0.0.1:8084/api/highlight`
 - summary: `POST http://127.0.0.1:8084/api/summary`
 
-Фронтенд ходит в `microservicetemplate` по `http://127.0.0.1:8082` и использует `POST /api/dev/token` для demo JWT. Для `GET/POST/PUT/DELETE` у `microservicetemplate` включены CORS-заголовки.
+Legacy/debug web assets всё ещё доступны в `ai_gateway`, но основной пользовательский интерфейс теперь живёт в `taskManagerApp`.
+
+## Task Manager App
+
+Нативный GUI-клиент живёт в `microservicetemplate/mylanguage/taskManagerApp`.
+
+- строится отдельным Docker-образом `aura-task-manager-app:local`
+- использует bearer token, который получает через `POST /api/dev/token`
+- умеет создавать, редактировать, удалять и переводить задачи в `resolved`
+- вызывает `ai-gateway` для highlight/summary и подсвечивает важные карточки
+- при отсутствии X-сервера стартует через `Xvfb`, чтобы контейнер был usable в headless-среде
 
 ## Service Shape
 
