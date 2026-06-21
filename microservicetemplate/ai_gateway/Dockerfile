@@ -61,7 +61,7 @@ WORKDIR /app/microservicetemplate/ai_gateway
 
 ENV AI_GATEWAY_PROVIDER_URL=https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
 ENV AI_GATEWAY_API_KEY=
-ENV GEMINI_API_KEY=AQ.Ab8RN6Kom7v6z6lAVovsC__wvymthYCNGJjcXx4MYwUOTlVrfA
+ENV GEMINI_API_KEY=
 ENV AI_GATEWAY_MODE=real
 ENV AI_GATEWAY_MODEL=gemini-3.5-flash
 ENV AI_GATEWAY_HTTP_PORT=8084
