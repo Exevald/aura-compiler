@@ -15,6 +15,8 @@
 struct CachedPackage
 {
 	std::vector<std::string> sources;
+	std::vector<std::filesystem::path> sourceFiles;
+	std::vector<std::filesystem::file_time_type> sourceFileWriteTimes;
 	std::string declaredPackageName;
 	std::vector<std::string> imports;
 };

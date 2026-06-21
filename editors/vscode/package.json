@@ -1,0 +1,35 @@
+{
+  "name": "aura-language",
+  "displayName": "Aura Language",
+  "description": "Basic syntax highlighting for Aura source files.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "aura",
+        "aliases": [
+          "Aura",
+          "aura"
+        ],
+        "extensions": [
+          ".aura"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "aura",
+        "scopeName": "source.aura",
+        "path": "./syntaxes/aura.tmLanguage.json"
+      }
+    ]
+  }
+}

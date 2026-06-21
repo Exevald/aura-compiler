@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <stdexcept>
 #include <utility>
 
 namespace VM::Execution
@@ -97,8 +98,9 @@ ExecutionResult VirtualMachine::Run()
 			}
 
 			CallFrame& frame = m_context.CurrentFrame();
+			const size_t codeSize = frame.function->chunk->GetCodeSize();
 
-			if (frame.ip >= frame.function->chunk->GetCodeSize())
+			if (frame.ip >= codeSize)
 			{
 				Core::Instruction implicitReturn(Core::OpCode::OP_RETURN, 0);
 				Dispatch(implicitReturn);
@@ -112,14 +114,30 @@ ExecutionResult VirtualMachine::Run()
 			uint8_t byte = frame.function->chunk->GetCode()[frame.ip++];
 			const auto opcode = static_cast<Core::OpCode>(byte);
 			uint16_t operand = 0;
+			const auto requireBytes = [&](const size_t count) -> bool {
+				if (frame.ip + count > codeSize)
+				{
+					m_context.RaiseError("Truncated bytecode stream");
+					return false;
+				}
+				return true;
+			};
 
 			if (const auto opSize = Core::GetOperandSize(opcode);
 				opSize == Core::OperandSize::Uint8)
 			{
+				if (!requireBytes(1))
+				{
+					return ExecutionResult::RuntimeError;
+				}
 				operand = frame.function->chunk->GetCode()[frame.ip++];
 			}
 			else if (opSize == Core::OperandSize::Uint16)
 			{
+				if (!requireBytes(2))
+				{
+					return ExecutionResult::RuntimeError;
+				}
 				const uint8_t msb = frame.function->chunk->GetCode()[frame.ip++];
 				const uint8_t lsb = frame.function->chunk->GetCode()[frame.ip++];
 				operand = static_cast<uint16_t>((msb << 8) | lsb);
@@ -168,6 +186,14 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 
 	CallFrame& frame = m_context.CurrentFrame();
 	auto& constants = frame.function->chunk->constants;
+	const size_t codeSize = frame.function->chunk->GetCodeSize();
+	const auto ensureRemaining = [&](const size_t count) -> bool {
+		if (frame.ip + count > codeSize)
+		{
+			return Fail(m_context, "Truncated bytecode stream");
+		}
+		return true;
+	};
 
 	if (auto it = m_extensions.find(instr.opcode); it != m_extensions.end())
 	{
@@ -312,6 +338,10 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	case OP_JUMP_IF_TRUE: {
 		if (Core::ValueHelper::As<bool>(m_context.PopValue()))
 		{
+			if (instr.operand > codeSize - frame.ip)
+			{
+				return Fail(m_context, "Jump exceeds bytecode bounds");
+			}
 			frame.ip += instr.operand;
 		}
 		return 0;
@@ -321,17 +351,29 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		if (bool condition = Core::ValueHelper::As<bool>(m_context.PopValue());
 			!condition)
 		{
+			if (instr.operand > codeSize - frame.ip)
+			{
+				return Fail(m_context, "Jump exceeds bytecode bounds");
+			}
 			frame.ip += instr.operand;
 		}
 		return 0;
 	}
 
 	case OP_JUMP: {
+		if (instr.operand > codeSize - frame.ip)
+		{
+			return Fail(m_context, "Jump exceeds bytecode bounds");
+		}
 		frame.ip += instr.operand;
 		return 0;
 	}
 
 	case OP_LOOP: {
+		if (instr.operand > frame.ip)
+		{
+			return Fail(m_context, "Loop offset exceeds current instruction pointer");
+		}
 		frame.ip -= instr.operand;
 		return 0;
 	}
@@ -389,6 +431,10 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	}
 
 	case OP_BUILD_ACTOR: {
+		if (!ensureRemaining(1))
+		{
+			return RuntimeError;
+		}
 		const uint8_t fieldCount = frame.function->chunk->code[frame.ip++];
 		return DataExecutor{ *this }.BuildActor(instr.operand, fieldCount);
 	}
@@ -400,6 +446,10 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		return DataExecutor{ *this }.HandleMemberSet(static_cast<uint8_t>(instr.operand));
 
 	case OP_BUILD_ENUM: {
+		if (!ensureRemaining(1))
+		{
+			return RuntimeError;
+		}
 		uint8_t tag = instr.operand;
 		uint8_t argCount = frame.function->chunk->code[frame.ip++];
 		return DataExecutor{ *this }.BuildEnum(tag, argCount);
@@ -512,6 +562,10 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		}
 		else
 		{
+			if (jumpOffset > codeSize - frame.ip)
+			{
+				return Fail(m_context, "Jump exceeds bytecode bounds");
+			}
 			frame.ip += jumpOffset;
 		}
 		return 0;
@@ -520,6 +574,10 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	case OP_ITER_TAKE: {
 		auto n = Core::ValueHelper::As<int64_t>(m_context.PopValue());
 		Value v = m_context.PopValue();
+		if (!std::holds_alternative<Core::IteratorPtr>(v) || !std::get<Core::IteratorPtr>(v))
+		{
+			return Fail(m_context, "Iterator transform requires iterator input");
+		}
 		auto sourceIt = std::get<Core::IteratorPtr>(v);
 
 		auto it = std::make_shared<Core::Iterator>();
@@ -540,6 +598,10 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	case OP_ITER_DROP: {
 		auto n = Core::ValueHelper::As<int64_t>(m_context.PopValue());
 		Value v = m_context.PopValue();
+		if (!std::holds_alternative<Core::IteratorPtr>(v) || !std::get<Core::IteratorPtr>(v))
+		{
+			return Fail(m_context, "Iterator transform requires iterator input");
+		}
 		auto sourceIt = std::get<Core::IteratorPtr>(v);
 
 		auto it = std::make_shared<Core::Iterator>();
@@ -563,6 +625,10 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	case OP_ITER_TRANSFORM: {
 		Value fnVal = m_context.PopValue();
 		Value itVal = m_context.PopValue();
+		if (!std::holds_alternative<Core::IteratorPtr>(itVal) || !std::get<Core::IteratorPtr>(itVal))
+		{
+			return Fail(m_context, "Iterator transform requires iterator input");
+		}
 		auto sourceIt = std::get<Core::IteratorPtr>(itVal);
 		Core::ClosurePtr closure;
 		Core::FunctionPtr fn;
@@ -571,11 +637,15 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 			closure = std::get<Core::ClosurePtr>(fnVal);
 			fn = closure->function;
 		}
-		else
+		else if (std::holds_alternative<Core::FunctionPtr>(fnVal))
 		{
 			fn = std::get<Core::FunctionPtr>(fnVal);
 			closure = std::make_shared<Core::Closure>();
 			closure->function = fn;
+		}
+		else
+		{
+			return Fail(m_context, "Iterator transform requires callable input");
 		}
 
 		auto it = std::make_shared<Core::Iterator>();
@@ -586,13 +656,33 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 				return { false, std::monostate{} };
 			}
 
+			const size_t stackBase = m_context.StackSize();
+			const size_t frameBase = m_context.GetFramesCount();
+			const size_t transactionBase = m_context.ActiveTransactionCount();
+			const size_t handlerBase = m_context.ActiveHandlerCount();
+
 			m_context.PushValue(closure);
 			m_context.PushValue(val);
 
 			const size_t argBase = m_context.StackSize() - 1;
 			m_context.PushFrame(fn, closure, argBase);
 
-			this->Run();
+			const auto result = this->Run();
+			if (result != ExecutionResult::Success)
+			{
+				while (m_context.GetFramesCount() > frameBase)
+				{
+					m_context.PopFrame();
+				}
+				while (m_context.StackSize() > stackBase)
+				{
+					m_context.PopValue();
+				}
+				m_context.UnwindTransactions(transactionBase);
+				m_context.UnwindHandlers(handlerBase);
+				throw std::runtime_error(
+					m_context.HasError() ? std::string(m_context.GetError()) : "Iterator transform failed");
+			}
 
 			return { true, m_context.PopValue() };
 		};
@@ -603,6 +693,10 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 
 	case OP_ITER_REVERSE: {
 		Value v = m_context.PopValue();
+		if (!std::holds_alternative<Core::IteratorPtr>(v) || !std::get<Core::IteratorPtr>(v))
+		{
+			return Fail(m_context, "Iterator transform requires iterator input");
+		}
 		auto sourceIt = std::get<Core::IteratorPtr>(v);
 
 		auto it = std::make_shared<Core::Iterator>();
@@ -610,9 +704,9 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 		auto initialized = std::make_shared<bool>(false);
 		auto index = std::make_shared<int64_t>(0);
 
-		it->next = [sourceIt, buffer, initialized, index]() -> std::pair<bool, Value> {
-			if (!*initialized)
-			{
+			it->next = [sourceIt, buffer, initialized, index]() -> std::pair<bool, Value> {
+				if (!*initialized)
+				{
 				while (true)
 				{
 					auto [has, val] = sourceIt->next();
@@ -621,11 +715,16 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 						break;
 					}
 					buffer->push_back(val);
+					}
+					if (buffer->empty())
+					{
+						*initialized = true;
+						return { false, std::monostate{} };
+					}
+					*index = static_cast<int64_t>(buffer->size()) - 1;
+					*initialized = true;
 				}
-				*index = buffer->size() - 1;
-				*initialized = true;
-			}
-			if (*index >= 0)
+				if (*index >= 0)
 			{
 				return { true, (*buffer)[(*index)--] };
 			}
@@ -638,6 +737,10 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 	case OP_ITER_FILTER: {
 		Value fnVal = m_context.PopValue();
 		Value itVal = m_context.PopValue();
+		if (!std::holds_alternative<Core::IteratorPtr>(itVal) || !std::get<Core::IteratorPtr>(itVal))
+		{
+			return Fail(m_context, "Iterator filter requires iterator input");
+		}
 		auto sourceIt = std::get<Core::IteratorPtr>(itVal);
 		Core::ClosurePtr closure;
 		Core::FunctionPtr fn;
@@ -646,11 +749,15 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 			closure = std::get<Core::ClosurePtr>(fnVal);
 			fn = closure->function;
 		}
-		else
+		else if (std::holds_alternative<Core::FunctionPtr>(fnVal))
 		{
 			fn = std::get<Core::FunctionPtr>(fnVal);
 			closure = std::make_shared<Core::Closure>();
 			closure->function = fn;
+		}
+		else
+		{
+			return Fail(m_context, "Iterator filter requires callable input");
 		}
 
 		auto it = std::make_shared<Core::Iterator>();
@@ -663,13 +770,33 @@ int VirtualMachine::Dispatch(const Core::Instruction& instr)
 					return { false, std::monostate{} };
 				}
 
+				const size_t stackBase = m_context.StackSize();
+				const size_t frameBase = m_context.GetFramesCount();
+				const size_t transactionBase = m_context.ActiveTransactionCount();
+				const size_t handlerBase = m_context.ActiveHandlerCount();
+
 				m_context.PushValue(closure);
 				m_context.PushValue(val);
 
 				const size_t argBase = m_context.StackSize() - 1;
 				m_context.PushFrame(fn, closure, argBase);
 
-				this->Run();
+				const auto result = this->Run();
+				if (result != ExecutionResult::Success)
+				{
+					while (m_context.GetFramesCount() > frameBase)
+					{
+						m_context.PopFrame();
+					}
+					while (m_context.StackSize() > stackBase)
+					{
+						m_context.PopValue();
+					}
+					m_context.UnwindTransactions(transactionBase);
+					m_context.UnwindHandlers(handlerBase);
+					throw std::runtime_error(
+						m_context.HasError() ? std::string(m_context.GetError()) : "Iterator filter failed");
+				}
 
 				if (Core::ValueHelper::As<bool>(m_context.PopValue()))
 				{

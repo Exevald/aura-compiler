@@ -17,6 +17,17 @@ PackageLinker::PackageLinker(
 
 ASTNodePtr PackageLinker::LinkEntryFile(const std::filesystem::path& sourcePath)
 {
+	const auto previousModuleRootContext = m_activeModuleRootContext;
+	struct RestoreContext
+	{
+		std::optional<ModuleRootContext>& slot;
+		std::optional<ModuleRootContext> previous;
+		~RestoreContext()
+		{
+			slot = std::move(previous);
+		}
+	} restore{ m_activeModuleRootContext, previousModuleRootContext };
+
 	State state;
 	return LoadPackageTree(ResolveEntryPackagePath(sourcePath), state, false);
 }
@@ -163,13 +174,39 @@ CachedPackage PackageLinker::GetOrLoadPackage(
 {
 	const auto normalizedPath = std::filesystem::weakly_canonical(packagePath);
 	const std::string key = normalizedPath.string();
+	const auto sourceFiles = CollectPackageSourceFiles(normalizedPath);
 
 	if (const auto it = m_packageCache.find(key); it != m_packageCache.end())
 	{
-		return it->second;
+		const auto& cached = it->second;
+		if (cached.sourceFiles == sourceFiles
+			&& cached.sourceFileWriteTimes.size() == sourceFiles.size())
+		{
+			bool fresh = true;
+			for (size_t i = 0; i < sourceFiles.size(); ++i)
+			{
+				try
+				{
+					if (std::filesystem::last_write_time(sourceFiles[i]) != cached.sourceFileWriteTimes[i])
+					{
+						fresh = false;
+						break;
+					}
+				}
+				catch (const std::exception&)
+				{
+					fresh = false;
+					break;
+				}
+			}
+
+			if (fresh)
+			{
+				return cached;
+			}
+		}
 	}
 
-	const auto sourceFiles = CollectPackageSourceFiles(normalizedPath);
 	if (sourceFiles.empty())
 	{
 		throw std::runtime_error("No Aura source files found for package: " + normalizedPath.string());
@@ -220,6 +257,13 @@ CachedPackage PackageLinker::GetOrLoadPackage(
 				package.imports.push_back(importName);
 			}
 		}
+	}
+
+	package.sourceFiles = sourceFiles;
+	package.sourceFileWriteTimes.reserve(sourceFiles.size());
+	for (const auto& sourceFile : sourceFiles)
+	{
+		package.sourceFileWriteTimes.push_back(std::filesystem::last_write_time(sourceFile));
 	}
 
 	if (importedPackage && package.declaredPackageName.empty())

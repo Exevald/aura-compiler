@@ -44,6 +44,31 @@ TEST_F(CompilerTest, BytecodeVariableDeclaration)
 	EXPECT_TRUE(foundSetLocal);
 }
 
+TEST_F(CompilerTest, BytecodeSerializationWritesHeaderAndConstants)
+{
+	const auto root = ParseCode("var answer = 42;");
+	ASSERT_NE(root, nullptr);
+
+	BytecodeGenerator compiler;
+	const Compiler& compiled = MakeCompiler(compiler);
+
+	std::istringstream input("var answer = 42;");
+	std::ostringstream output;
+	EXPECT_TRUE(compiled.Compile(input, output));
+
+	const std::string bytes = output.str();
+	ASSERT_GE(bytes.size(), 9u);
+	EXPECT_EQ(bytes.substr(0, 4), "AURB");
+	EXPECT_EQ(static_cast<uint8_t>(bytes[4]), 1);
+
+	const auto constCount = static_cast<uint32_t>(
+		static_cast<uint8_t>(bytes[5])
+		| (static_cast<uint8_t>(bytes[6]) << 8)
+		| (static_cast<uint8_t>(bytes[7]) << 16)
+		| (static_cast<uint8_t>(bytes[8]) << 24));
+	EXPECT_GE(constCount, 1u);
+}
+
 TEST_F(CompilerTest, BytecodeMathComplexity)
 {
 	const auto root = ParseCode("var x = 2 + 3 * 4;");

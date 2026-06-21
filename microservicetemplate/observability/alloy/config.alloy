@@ -1,0 +1,41 @@
+local.file_match "containers" {
+  path_targets = [
+    {
+      __path__ = "/var/lib/docker/containers/*/*-json.log",
+      job      = "docker",
+    },
+  ]
+}
+
+loki.source.file "containers" {
+  targets         = local.file_match.containers.targets
+  forward_to      = [loki.process.containers.receiver]
+  tail_from_end   = true
+}
+
+loki.process "containers" {
+  stage.json {
+    expressions = {
+      log    = "log",
+      stream = "stream",
+    }
+  }
+
+  stage.labels {
+    values = {
+      stream = "",
+    }
+  }
+
+  stage.output {
+    source = "log"
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

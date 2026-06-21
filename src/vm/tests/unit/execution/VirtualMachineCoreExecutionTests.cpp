@@ -1,5 +1,7 @@
 #include "VirtualMachineTestSupport.h"
 
+#include <limits>
+
 TEST_F(VirtualMachineTest, InterpretNullChunkReturnsFalse)
 {
 	EXPECT_FALSE(vm.Interpret(nullptr));
@@ -101,6 +103,56 @@ TEST_F(VirtualMachineTest, ImplicitReturnAtEndOfChunk)
 	Chunk chunk;
 	chunk.WriteConstant(10.0);
 	EXPECT_TRUE(vm.Interpret(&chunk));
+}
+
+TEST_F(VirtualMachineTest, EmptyReverseIteratorDoesNotUnderflow)
+{
+	Chunk chunk;
+	chunk.Write(OP_BUILD_ARRAY);
+	chunk.code.push_back(0);
+	chunk.Write(OP_MAKE_ITER);
+	chunk.Write(OP_ITER_REVERSE);
+	chunk.Write(OP_ITER_NEXT);
+	chunk.code.push_back(0);
+	chunk.Write(OP_RETURN);
+
+	EXPECT_TRUE(vm.Interpret(&chunk));
+}
+
+TEST_F(VirtualMachineTest, LoopWithOversizedOffsetFailsGracefully)
+{
+	Chunk chunk;
+	chunk.Write(OP_LOOP);
+	chunk.WriteOperand(OP_LOOP, std::numeric_limits<uint16_t>::max());
+
+	EXPECT_FALSE(vm.Interpret(&chunk));
+	EXPECT_TRUE(vm.GetContext().HasError());
+	EXPECT_THAT(std::string(vm.GetContext().GetError()), ::testing::HasSubstr("Loop offset"));
+}
+
+TEST_F(VirtualMachineTest, IteratorTransformPropagatesNestedError)
+{
+	Chunk chunk;
+	chunk.WriteConstant(1.0);
+	chunk.Write(OP_BUILD_ARRAY);
+	chunk.code.push_back(1);
+	chunk.Write(OP_MAKE_ITER);
+
+	auto fn = std::make_shared<Function>();
+	fn->name = "bad_transform";
+	fn->arity = 1;
+	fn->chunk->Write(OP_ADD);
+	fn->chunk->Write(OP_RETURN);
+
+	chunk.WriteConstant(fn);
+	chunk.Write(OP_ITER_TRANSFORM);
+	chunk.Write(OP_ITER_NEXT);
+	chunk.code.push_back(0);
+	chunk.Write(OP_RETURN);
+
+	EXPECT_FALSE(vm.Interpret(&chunk));
+	EXPECT_TRUE(vm.GetContext().HasError());
+	EXPECT_THAT(std::string(vm.GetContext().GetError()), ::testing::HasSubstr("underflow"));
 }
 
 TEST_F(VirtualMachineTest, OpReturnCleansStack)

@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: microservicetemplate
+    orgId: 1
+    folder: microservicetemplate
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

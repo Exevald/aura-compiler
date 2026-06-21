@@ -4,23 +4,148 @@
 #include "parser/Parser.h"
 
 #include <filesystem>
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <mutex>
+#include <stdexcept>
 #include <sstream>
+#include <type_traits>
 
 namespace
 {
 
+template <typename T>
+void WritePod(std::ostream& output, const T& value)
+{
+	static_assert(std::is_trivially_copyable_v<T>);
+	output.write(reinterpret_cast<const char*>(&value), static_cast<std::streamsize>(sizeof(T)));
+}
+
+void WriteString(std::ostream& output, const std::string& value)
+{
+	const auto size = static_cast<uint32_t>(value.size());
+	WritePod(output, size);
+	output.write(value.data(), static_cast<std::streamsize>(value.size()));
+}
+
+void SerializeValue(const VM::Core::Value& value, std::ostream& output);
+
+void SerializeFunction(const VM::Core::FunctionPtr& function, std::ostream& output)
+{
+	if (!function)
+	{
+		throw std::runtime_error("Cannot serialize null function constant");
+	}
+
+	WriteString(output, function->name);
+	WritePod(output, static_cast<int32_t>(function->arity));
+	WritePod(output, static_cast<int32_t>(function->minArity));
+	WritePod(output, static_cast<uint8_t>(function->variadic ? 1 : 0));
+
+	const auto captureCount = static_cast<uint32_t>(function->captureNames.size());
+	WritePod(output, captureCount);
+	for (const auto& captureName : function->captureNames)
+	{
+		WriteString(output, captureName);
+	}
+
+	if (!function->chunk)
+	{
+		throw std::runtime_error("Cannot serialize function without bytecode chunk");
+	}
+
+	const auto constantCount = static_cast<uint32_t>(function->chunk->constants.size());
+	WritePod(output, constantCount);
+	for (const auto& constant : function->chunk->constants)
+	{
+		SerializeValue(constant, output);
+	}
+
+	const auto codeSize = static_cast<uint32_t>(function->chunk->code.size());
+	WritePod(output, codeSize);
+	if (codeSize > 0)
+	{
+		output.write(reinterpret_cast<const char*>(function->chunk->code.data()),
+			static_cast<std::streamsize>(function->chunk->code.size()));
+	}
+}
+
+void SerializeValue(const VM::Core::Value& value, std::ostream& output)
+{
+	enum class ValueTag : uint8_t
+	{
+		Null = 0,
+		Bool = 1,
+		Int = 2,
+		Double = 3,
+		String = 4,
+		Function = 5,
+	};
+
+	if (std::holds_alternative<std::monostate>(value))
+	{
+		WritePod(output, static_cast<uint8_t>(ValueTag::Null));
+		return;
+	}
+	if (std::holds_alternative<bool>(value))
+	{
+		WritePod(output, static_cast<uint8_t>(ValueTag::Bool));
+		WritePod(output, static_cast<uint8_t>(std::get<bool>(value) ? 1 : 0));
+		return;
+	}
+	if (std::holds_alternative<int64_t>(value))
+	{
+		WritePod(output, static_cast<uint8_t>(ValueTag::Int));
+		WritePod(output, std::get<int64_t>(value));
+		return;
+	}
+	if (std::holds_alternative<double>(value))
+	{
+		WritePod(output, static_cast<uint8_t>(ValueTag::Double));
+		WritePod(output, std::get<double>(value));
+		return;
+	}
+	if (std::holds_alternative<VM::Core::StringPtr>(value))
+	{
+		WritePod(output, static_cast<uint8_t>(ValueTag::String));
+		const auto& str = std::get<VM::Core::StringPtr>(value);
+		WritePod(output, static_cast<uint8_t>(str ? 1 : 0));
+		if (str)
+		{
+			WriteString(output, *str);
+		}
+		return;
+	}
+	if (std::holds_alternative<VM::Core::FunctionPtr>(value))
+	{
+		WritePod(output, static_cast<uint8_t>(ValueTag::Function));
+		SerializeFunction(std::get<VM::Core::FunctionPtr>(value), output);
+		return;
+	}
+
+	throw std::runtime_error("Unsupported constant type in bytecode serialization");
+}
+
 void SerializeChunk(const VM::Execution::Chunk& chunk, std::ostream& output)
 {
-	const auto constCount = static_cast<uint32_t>(chunk.constants.size());
-	output.write(reinterpret_cast<const char*>(&constCount), sizeof(constCount));
-	const auto codeSize = static_cast<uint32_t>(chunk.code.size());
-	output.write(reinterpret_cast<const char*>(&codeSize), sizeof(codeSize));
-	output.write(reinterpret_cast<const char*>(chunk.code.data()), static_cast<long>(chunk.code.size()));
+	output.write("AURB", 4);
+	WritePod(output, static_cast<uint8_t>(1));
 
-	std::cout << "Successfully compiled " << codeSize << " bytes of bytecode." << std::endl;
+	const auto constCount = static_cast<uint32_t>(chunk.constants.size());
+	WritePod(output, constCount);
+	for (const auto& constant : chunk.constants)
+	{
+		SerializeValue(constant, output);
+	}
+
+	const auto codeSize = static_cast<uint32_t>(chunk.code.size());
+	WritePod(output, codeSize);
+	if (codeSize > 0)
+	{
+		output.write(reinterpret_cast<const char*>(chunk.code.data()),
+			static_cast<std::streamsize>(chunk.code.size()));
+	}
 }
 
 std::string ReadSource(const std::istream& input)
